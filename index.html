@@ -1,0 +1,3032 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
+<title>LIFE//OS — 工业级元胞自动机高性能仿真工作站</title>
+<style>
+  :root {
+    --bg-deep: #07090e;
+    --bg-panel: rgba(13, 17, 26, 0.86);
+    --bg-panel-solid: #0d111a;
+    --bg-ele: rgba(25, 33, 50, 0.65);
+    --bg-ele-hover: rgba(38, 50, 77, 0.85);
+    --border-dim: rgba(56, 189, 248, 0.16);
+    --border-bright: rgba(56, 189, 248, 0.45);
+    --accent-cyan: #00f2fe;
+    --accent-emerald: #10b981;
+    --accent-amber: #f59e0b;
+    --accent-rose: #f43f5e;
+    --accent-purple: #a855f7;
+    --text-main: #e2e8f0;
+    --text-muted: #94a3b8;
+    --text-dim: #64748b;
+    --font-mono: 'JetBrains Mono', 'Fira Code', 'SF Mono', 'Consolas', monospace;
+    --font-sans: -apple-system, BlinkMacSystemFont, 'Segoe UI', Roboto, sans-serif;
+  }
+
+  * {
+    box-sizing: border-box;
+    margin: 0;
+    padding: 0;
+    user-select: none;
+    -webkit-user-select: none;
+  }
+
+  html, body {
+    width: 100vw;
+    height: 100vh;
+    overflow: hidden;
+    background-color: var(--bg-deep);
+    color: var(--text-main);
+    font-family: var(--font-sans);
+    font-size: 13px;
+  }
+
+  /* Main Viewport Canvas */
+  #viewport {
+    position: absolute;
+    top: 0;
+    left: 0;
+    width: 100%;
+    height: 100%;
+    display: block;
+    cursor: crosshair;
+    z-index: 1;
+  }
+
+  /* Glassmorphic HUD Containers */
+  .hud-panel {
+    position: absolute;
+    background: var(--bg-panel);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+    border: 1px solid var(--border-dim);
+    border-radius: 8px;
+    box-shadow: 0 10px 30px rgba(0, 0, 0, 0.6), inset 0 1px 0 rgba(255, 255, 255, 0.06);
+    z-index: 10;
+    transition: border-color 0.2s ease, transform 0.25s cubic-bezier(0.16, 1, 0.3, 1), opacity 0.25s ease;
+  }
+  .hud-panel:hover {
+    border-color: rgba(56, 189, 248, 0.28);
+  }
+
+  /* Top Telemetry Bar */
+  #top-bar {
+    top: 12px;
+    left: 12px;
+    right: 12px;
+    height: 52px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    padding: 0 16px;
+    gap: 12px;
+  }
+
+  .brand-group {
+    display: flex;
+    align-items: center;
+    gap: 10px;
+    min-width: 190px;
+  }
+  .brand-logo {
+    width: 28px;
+    height: 28px;
+    border-radius: 6px;
+    background: linear-gradient(135deg, rgba(0, 242, 254, 0.2), rgba(16, 185, 129, 0.2));
+    border: 1px solid var(--accent-cyan);
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 2px;
+    padding: 4px;
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.3);
+  }
+  .brand-logo span {
+    background: var(--accent-cyan);
+    border-radius: 1px;
+  }
+  .brand-logo span.off {
+    background: transparent;
+  }
+  .brand-title {
+    font-family: var(--font-mono);
+    font-weight: 700;
+    font-size: 14px;
+    letter-spacing: 1px;
+    color: #fff;
+    display: flex;
+    flex-direction: column;
+  }
+  .brand-sub {
+    font-size: 9px;
+    color: var(--accent-cyan);
+    letter-spacing: 1.5px;
+    font-weight: 500;
+  }
+
+  /* Telemetry Metrics Grid */
+  .telemetry-strip {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+    overflow-x: auto;
+    scrollbar-width: none;
+  }
+  .telemetry-strip::-webkit-scrollbar { display: none; }
+
+  .metric-card {
+    background: rgba(8, 11, 18, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 4px 10px;
+    min-width: 92px;
+    display: flex;
+    flex-direction: column;
+    justify-content: center;
+  }
+  .metric-label {
+    font-size: 9px;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-dim);
+    font-weight: 600;
+  }
+  .metric-val {
+    font-family: var(--font-mono);
+    font-size: 13px;
+    font-weight: 700;
+    color: var(--text-main);
+    white-space: nowrap;
+  }
+  .metric-val.cyan { color: var(--accent-cyan); }
+  .metric-val.emerald { color: var(--accent-emerald); }
+  .metric-val.amber { color: var(--accent-amber); }
+
+  /* Sparkline container */
+  .sparkline-box {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    background: rgba(8, 11, 18, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 4px 8px;
+    height: 38px;
+  }
+  #sparkline-canvas {
+    width: 110px;
+    height: 26px;
+    display: block;
+  }
+
+  /* Left Sidebar: Pattern Library & Tools */
+  #left-sidebar {
+    top: 76px;
+    left: 12px;
+    bottom: 76px;
+    width: 280px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #left-sidebar.collapsed {
+    transform: translateX(-296px);
+  }
+
+  /* Right Sidebar: Engine Config, Radar & Rules */
+  #right-sidebar {
+    top: 76px;
+    right: 12px;
+    bottom: 76px;
+    width: 270px;
+    display: flex;
+    flex-direction: column;
+    overflow: hidden;
+  }
+  #right-sidebar.collapsed {
+    transform: translateX(286px);
+  }
+
+  .panel-header {
+    padding: 10px 14px;
+    border-bottom: 1px solid var(--border-dim);
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-family: var(--font-mono);
+    font-size: 11px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 1px;
+    color: var(--accent-cyan);
+    background: rgba(0, 242, 254, 0.04);
+  }
+
+  .panel-body {
+    padding: 12px;
+    overflow-y: auto;
+    flex: 1;
+    display: flex;
+    flex-direction: column;
+    gap: 14px;
+  }
+  .panel-body::-webkit-scrollbar {
+    width: 5px;
+  }
+  .panel-body::-webkit-scrollbar-thumb {
+    background: rgba(148, 163, 184, 0.25);
+    border-radius: 4px;
+  }
+
+  .section-title {
+    font-size: 10px;
+    font-weight: 700;
+    text-transform: uppercase;
+    letter-spacing: 0.8px;
+    color: var(--text-muted);
+    margin-bottom: 6px;
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+  }
+
+  /* Buttons & Inputs */
+  .btn {
+    background: var(--bg-ele);
+    color: var(--text-main);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    border-radius: 5px;
+    padding: 6px 10px;
+    font-size: 12px;
+    font-family: var(--font-sans);
+    font-weight: 500;
+    cursor: pointer;
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    gap: 6px;
+    transition: all 0.15s ease;
+    white-space: nowrap;
+  }
+  .btn:hover {
+    background: var(--bg-ele-hover);
+    border-color: var(--border-bright);
+    color: #fff;
+  }
+  .btn:active {
+    transform: translateY(1px);
+  }
+  .btn.active, .btn.primary {
+    background: linear-gradient(135deg, rgba(0, 242, 254, 0.22), rgba(16, 185, 129, 0.22));
+    border-color: var(--accent-cyan);
+    color: #fff;
+    box-shadow: 0 0 12px rgba(0, 242, 254, 0.2);
+  }
+  .btn.danger:hover {
+    background: rgba(244, 63, 94, 0.25);
+    border-color: var(--accent-rose);
+    color: #fecdd3;
+  }
+  .btn-mono {
+    font-family: var(--font-mono);
+    font-size: 11px;
+  }
+
+  .btn-grid-2 {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 6px;
+  }
+  .btn-grid-3 {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+    gap: 6px;
+  }
+  .btn-grid-4 {
+    display: grid;
+    grid-template-columns: repeat(4, 1fr);
+    gap: 5px;
+  }
+
+  /* Pattern Cards */
+  .pattern-list {
+    display: flex;
+    flex-direction: column;
+    gap: 6px;
+  }
+  .pattern-card {
+    background: rgba(15, 23, 42, 0.65);
+    border: 1px solid rgba(255, 255, 255, 0.06);
+    border-radius: 6px;
+    padding: 8px 10px;
+    cursor: pointer;
+    transition: all 0.15s ease;
+    display: flex;
+    flex-direction: column;
+    gap: 3px;
+  }
+  .pattern-card:hover {
+    background: rgba(30, 41, 59, 0.85);
+    border-color: rgba(0, 242, 254, 0.4);
+    transform: translateX(2px);
+  }
+  .pattern-card.selected {
+    background: rgba(16, 185, 129, 0.16);
+    border-color: var(--accent-emerald);
+    box-shadow: 0 0 12px rgba(16, 185, 129, 0.2);
+  }
+  .pattern-card-top {
+    display: flex;
+    align-items: center;
+    justify-content: space-between;
+    font-weight: 600;
+    color: #fff;
+    font-size: 12px;
+  }
+  .pattern-tag {
+    font-family: var(--font-mono);
+    font-size: 9px;
+    padding: 1px 5px;
+    border-radius: 3px;
+    background: rgba(0, 242, 254, 0.12);
+    color: var(--accent-cyan);
+    border: 1px solid rgba(0, 242, 254, 0.25);
+  }
+  .pattern-desc {
+    font-size: 11px;
+    color: var(--text-muted);
+    line-height: 1.35;
+  }
+
+  /* Bottom Transport Dock */
+  #bottom-bar {
+    bottom: 12px;
+    left: 50%;
+    transform: translateX(-50%);
+    height: 54px;
+    padding: 0 16px;
+    display: flex;
+    align-items: center;
+    gap: 14px;
+    max-width: calc(100vw - 24px);
+    overflow-x: auto;
+  }
+
+  .transport-group {
+    display: flex;
+    align-items: center;
+    gap: 6px;
+  }
+  .divider-v {
+    width: 1px;
+    height: 28px;
+    background: rgba(255, 255, 255, 0.1);
+  }
+
+  /* Sliders & Text Inputs */
+  .slider-row {
+    display: flex;
+    flex-direction: column;
+    gap: 4px;
+  }
+  .slider-header {
+    display: flex;
+    justify-content: space-between;
+    font-size: 11px;
+    color: var(--text-muted);
+  }
+  .slider-header span.val {
+    font-family: var(--font-mono);
+    color: var(--accent-cyan);
+    font-weight: 600;
+  }
+  input[type="range"] {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 100%;
+    height: 5px;
+    background: rgba(15, 23, 42, 0.9);
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 3px;
+    outline: none;
+  }
+  input[type="range"]::-webkit-slider-thumb {
+    -webkit-appearance: none;
+    appearance: none;
+    width: 14px;
+    height: 14px;
+    border-radius: 50%;
+    background: var(--accent-cyan);
+    cursor: pointer;
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.6);
+  }
+
+  .input-text {
+    width: 100%;
+    background: rgba(8, 11, 18, 0.8);
+    border: 1px solid var(--border-dim);
+    border-radius: 5px;
+    padding: 6px 8px;
+    color: #fff;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  .input-text:focus {
+    border-color: var(--accent-cyan);
+    box-shadow: 0 0 8px rgba(0, 242, 254, 0.25);
+  }
+
+  /* Minimap Radar */
+  .radar-box {
+    width: 100%;
+    height: 145px;
+    background: #05070b;
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    position: relative;
+    overflow: hidden;
+    cursor: pointer;
+  }
+  #minimap-canvas {
+    width: 100%;
+    height: 100%;
+    display: block;
+  }
+  .radar-overlay-label {
+    position: absolute;
+    bottom: 4px;
+    right: 6px;
+    font-family: var(--font-mono);
+    font-size: 9px;
+    color: var(--text-dim);
+    pointer-events: none;
+  }
+
+  /* Stamp Floating Banner */
+  #stamp-banner {
+    position: absolute;
+    top: 76px;
+    left: 50%;
+    transform: translateX(-50%);
+    background: rgba(16, 185, 129, 0.18);
+    border: 1px solid var(--accent-emerald);
+    backdrop-filter: blur(10px);
+    padding: 8px 16px;
+    border-radius: 999px;
+    display: none;
+    align-items: center;
+    gap: 12px;
+    z-index: 20;
+    box-shadow: 0 6px 24px rgba(0, 0, 0, 0.5);
+    font-size: 12px;
+  }
+  #stamp-banner.visible {
+    display: flex;
+  }
+  .kbd {
+    font-family: var(--font-mono);
+    font-size: 10px;
+    padding: 2px 5px;
+    background: rgba(0, 0, 0, 0.45);
+    border: 1px solid rgba(255, 255, 255, 0.2);
+    border-radius: 4px;
+    color: #fff;
+  }
+
+  /* Modal Dialog for RLE Import/Export */
+  .modal-backdrop {
+    position: fixed;
+    inset: 0;
+    background: rgba(3, 5, 9, 0.78);
+    backdrop-filter: blur(6px);
+    display: none;
+    align-items: center;
+    justify-content: center;
+    z-index: 100;
+    padding: 20px;
+  }
+  .modal-backdrop.open {
+    display: flex;
+  }
+  .modal-window {
+    width: 100%;
+    max-width: 620px;
+    background: var(--bg-panel-solid);
+    border: 1px solid var(--border-bright);
+    border-radius: 10px;
+    box-shadow: 0 20px 50px rgba(0, 0, 0, 0.8);
+    overflow: hidden;
+    display: flex;
+    flex-direction: column;
+  }
+  .modal-body {
+    padding: 16px;
+    display: flex;
+    flex-direction: column;
+    gap: 12px;
+  }
+  textarea.rle-textarea {
+    width: 100%;
+    height: 220px;
+    background: #06080d;
+    border: 1px solid var(--border-dim);
+    border-radius: 6px;
+    padding: 10px;
+    color: var(--accent-cyan);
+    font-family: var(--font-mono);
+    font-size: 11px;
+    line-height: 1.45;
+    resize: vertical;
+    outline: none;
+    user-select: text;
+    -webkit-user-select: text;
+  }
+  textarea.rle-textarea:focus {
+    border-color: var(--accent-cyan);
+  }
+
+  /* Drag and Drop Overlay */
+  #drop-overlay {
+    position: fixed;
+    inset: 16px;
+    border: 2px dashed var(--accent-cyan);
+    border-radius: 14px;
+    background: rgba(0, 242, 254, 0.08);
+    backdrop-filter: blur(4px);
+    z-index: 200;
+    display: none;
+    align-items: center;
+    justify-content: center;
+    flex-direction: column;
+    gap: 10px;
+    pointer-events: none;
+  }
+  #drop-overlay.active {
+    display: flex;
+  }
+
+  /* Toast Notification */
+  #toast {
+    position: fixed;
+    bottom: 78px;
+    left: 50%;
+    transform: translateX(-50%) translateY(20px);
+    background: rgba(15, 23, 42, 0.95);
+    border: 1px solid var(--accent-cyan);
+    color: #fff;
+    padding: 8px 16px;
+    border-radius: 6px;
+    font-family: var(--font-mono);
+    font-size: 12px;
+    opacity: 0;
+    pointer-events: none;
+    transition: all 0.25s ease;
+    z-index: 150;
+    box-shadow: 0 8px 25px rgba(0, 0, 0, 0.6);
+  }
+  #toast.show {
+    opacity: 1;
+    transform: translateX(-50%) translateY(0);
+  }
+
+  /* Responsive adjustments */
+  @media (max-width: 1024px) {
+    #left-sidebar, #right-sidebar {
+      width: 240px;
+    }
+    .sparkline-box {
+      display: none;
+    }
+  }
+  @media (max-width: 768px) {
+    #left-sidebar { transform: translateX(-300px); }
+    #right-sidebar { transform: translateX(300px); }
+    #left-sidebar.mobile-open { transform: translateX(0); }
+    #right-sidebar.mobile-open { transform: translateX(0); }
+  }
+</style>
+</head>
+<body>
+
+<!-- Primary Infinite Viewport Canvas -->
+<canvas id="viewport"></canvas>
+
+<!-- Top Telemetry & Workstation Header -->
+<header id="top-bar" class="hud-panel">
+  <div class="brand-group">
+    <button id="btn-toggle-left" class="btn" title="切换左侧模式库面板 [Tab]">☰</button>
+    <div class="brand-logo" title="B3/S23 Glider">
+      <span class="off"></span><span></span><span class="off"></span>
+      <span class="off"></span><span class="off"></span><span></span>
+      <span></span><span></span><span></span>
+    </div>
+    <div class="brand-title">
+      <span>LIFE//OS <small style="font-size:10px;color:var(--text-muted)">v4.2</small></span>
+      <span class="brand-sub">SPARSE BIT-CHUNK ENGINE</span>
+    </div>
+  </div>
+
+  <div class="telemetry-strip">
+    <div class="metric-card">
+      <span class="metric-label">代数 (GEN)</span>
+      <span id="hud-gen" class="metric-val cyan">0</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">活细胞 (POP)</span>
+      <span id="hud-pop" class="metric-val emerald">0</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">活跃区块 (CHUNKS)</span>
+      <span id="hud-chunks" class="metric-val">0</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">物理步进 (TPS)</span>
+      <span id="hud-tps" class="metric-val amber">0.0</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">渲染帧率 (FPS)</span>
+      <span id="hud-fps" class="metric-val">60</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">光标坐标 (X, Y)</span>
+      <span id="hud-cursor" class="metric-val">0, 0</span>
+    </div>
+    <div class="metric-card">
+      <span class="metric-label">视口缩放 (ZOOM)</span>
+      <span id="hud-zoom" class="metric-val">12.0x</span>
+    </div>
+    <div class="sparkline-box" title="实时活细胞数量演化曲线">
+      <span class="metric-label" style="writing-mode:vertical-rl;transform:rotate(180deg);">POP TREND</span>
+      <canvas id="sparkline-canvas" width="110" height="26"></canvas>
+    </div>
+  </div>
+
+  <div style="display:flex;align-items:center;gap:6px;">
+    <button id="btn-rle-modal" class="btn btn-mono" title="导入 / 导出标准 RLE 格式">⇄ RLE 终端</button>
+    <button id="btn-export-png" class="btn btn-mono" title="截取当前视口保存为高清 PNG">📷 PNG</button>
+    <button id="btn-toggle-right" class="btn" title="切换右侧控制面板">⚙</button>
+  </div>
+</header>
+
+<!-- Stamp Preview Floating Mode Banner -->
+<div id="stamp-banner">
+  <span style="color:var(--accent-emerald);font-weight:700;">● 模式放置预览: <strong id="stamp-name">Glider</strong></span>
+  <span><kbd class="kbd">左键</kbd> 锚定放置</span>
+  <span><kbd class="kbd">R</kbd> 旋转90°</span>
+  <span><kbd class="kbd">F</kbd> 水平翻转</span>
+  <span><kbd class="kbd">V</kbd> 垂直翻转</span>
+  <span><kbd class="kbd">ESC / 右键</kbd> 取消</span>
+  <button id="btn-cancel-stamp" class="btn danger" style="padding:2px 8px;font-size:11px;">退出预览</button>
+</div>
+
+<!-- Left Sidebar: Interactive Tools & Pattern Library -->
+<aside id="left-sidebar" class="hud-panel">
+  <div class="panel-header">
+    <span>交互工具与经典模式库</span>
+    <span style="color:var(--text-dim)">PATTERNS</span>
+  </div>
+  <div class="panel-body">
+    <!-- Interactive Mode Selector -->
+    <div>
+      <div class="section-title">
+        <span>画布交互模式</span>
+        <span style="font-family:var(--font-mono);color:var(--accent-cyan)" id="tool-hint">左键绘制 / 右键擦除</span>
+      </div>
+      <div class="btn-grid-3">
+        <button id="tool-draw" class="btn active" title="左键绘制活细胞，右键擦除 [B]">✎ 笔刷</button>
+        <button id="tool-pan" class="btn" title="左键拖拽平移视口（或按住空格键/鼠标中键） [H]">✥ 漫游</button>
+        <button id="tool-erase" class="btn" title="左键擦除活细胞 [E]">⌫ 橡皮</button>
+      </div>
+    </div>
+
+    <!-- Brush Size & Shape -->
+    <div>
+      <div class="section-title">
+        <span>笔刷尺寸 / 散射</span>
+      </div>
+      <div class="btn-grid-4">
+        <button class="btn btn-mono brush-btn active" data-size="1">1×1</button>
+        <button class="btn btn-mono brush-btn" data-size="3">3×3</button>
+        <button class="btn btn-mono brush-btn" data-size="5">5×5</button>
+        <button class="btn btn-mono brush-btn" data-size="9">喷枪</button>
+      </div>
+    </div>
+
+    <!-- Pattern Search & Category -->
+    <div style="display:flex;flex-direction:column;gap:6px;flex:1;min-height:0;">
+      <div class="section-title">
+        <span>内置标准 RLE 生态库 (点击挂载)</span>
+        <span id="pattern-count-badge" style="color:var(--accent-emerald)">12</span>
+      </div>
+      <div id="pattern-list-container" class="pattern-list" style="overflow-y:auto;padding-right:2px;">
+        <!-- Populated dynamically via JS -->
+      </div>
+    </div>
+  </div>
+</aside>
+
+<!-- Right Sidebar: Radar, Rule Engine, Soup Generator & Camera -->
+<aside id="right-sidebar" class="hud-panel">
+  <div class="panel-header">
+    <span>核心计算引擎与视口控制</span>
+    <span style="color:var(--text-dim)">ENGINE</span>
+  </div>
+  <div class="panel-body">
+    <!-- Macro Radar Minimap -->
+    <div>
+      <div class="section-title">
+        <span>宏观全域雷达 (点击快速跳转)</span>
+        <span id="radar-range-label" style="font-family:var(--font-mono)">±256</span>
+      </div>
+      <div class="radar-box" id="radar-container" title="点击或拖拽快速定位无限网格视口">
+        <canvas id="minimap-canvas" width="244" height="145"></canvas>
+        <div class="radar-overlay-label">CHUNK RADAR</div>
+      </div>
+    </div>
+
+    <!-- Camera & Viewport Controls -->
+    <div>
+      <div class="section-title"><span>无限虚拟相机控制</span></div>
+      <div class="btn-grid-2">
+        <button id="btn-fit-view" class="btn" title="自动计算所有活细胞包围盒并居中缩放 [F]">⛶ 适配全域活细胞</button>
+        <button id="btn-origin-view" class="btn" title="回到世界坐标原点 (0,0) [O]">⌖ 归位原点 (0,0)</button>
+      </div>
+    </div>
+
+    <!-- Rule Engine (B/S Notation) -->
+    <div>
+      <div class="section-title">
+        <span>自动机生命规则 (B/S 位掩码)</span>
+        <span id="rule-active-badge" style="font-family:var(--font-mono);color:var(--accent-cyan)">B3/S23</span>
+      </div>
+      <div style="display:flex;gap:6px;margin-bottom:6px;">
+        <input id="input-rule" type="text" class="input-text" value="B3/S23" placeholder="例如 B3/S23" />
+        <button id="btn-apply-rule" class="btn primary">应用</button>
+      </div>
+      <div class="btn-grid-2">
+        <button class="btn btn-mono rule-preset" data-rule="B3/S23">Conway (B3/S23)</button>
+        <button class="btn btn-mono rule-preset" data-rule="B36/S23">HighLife (B36/S23)</button>
+        <button class="btn btn-mono rule-preset" data-rule="B3678/S34678">Day&Night</button>
+        <button class="btn btn-mono rule-preset" data-rule="B2/S">Seeds (B2/S)</button>
+      </div>
+    </div>
+
+    <!-- Random Soup Generator -->
+    <div>
+      <div class="section-title"><span>随机混沌汤生成器 (Random Soup)</span></div>
+      <div class="slider-row" style="margin-bottom:6px;">
+        <div class="slider-header">
+          <span>填充密度 (Density)</span>
+          <span id="val-density" class="val">28%</span>
+        </div>
+        <input id="slider-density" type="range" min="5" max="85" value="28" />
+      </div>
+      <div class="slider-row" style="margin-bottom:8px;">
+        <div class="slider-header">
+          <span>散布半径 (Span)</span>
+          <span id="val-soup-size" class="val">128×128</span>
+        </div>
+        <input id="slider-soup-size" type="range" min="32" max="512" step="32" value="128" />
+      </div>
+      <div class="btn-grid-2">
+        <button id="btn-random-soup" class="btn primary">🎲 散布随机细胞</button>
+        <button id="btn-clear-world" class="btn danger" title="清空所有区块并保存历史快照 [C]">🗑 清空世界</button>
+      </div>
+    </div>
+
+    <!-- Rendering & LOD Visual Options -->
+    <div>
+      <div class="section-title"><span>渲染管道与视觉选项</span></div>
+      <div class="btn-grid-2">
+        <button id="toggle-grid" class="btn active">▦ 动态LOD网格</button>
+        <button id="toggle-chunk-border" class="btn">⬚ 32×32块边界</button>
+        <button id="toggle-age-color" class="btn active">🌈 细胞年龄色谱</button>
+        <button id="toggle-origin" class="btn active">✚ 十字原点轴</button>
+      </div>
+    </div>
+
+    <!-- Shortcuts Legend -->
+    <div style="font-size:11px;color:var(--text-dim);line-height:1.6;border-top:1px solid rgba(255,255,255,0.06);padding-top:8px;">
+      <div><kbd class="kbd">Space</kbd> 播放/暂停 &nbsp; <kbd class="kbd">S</kbd> 单步步进</div>
+      <div><kbd class="kbd">Z</kbd> 历史回退 &nbsp; <kbd class="kbd">拖拽+Space</kbd> 平移视口</div>
+      <div><kbd class="kbd">R / F / V</kbd> 旋转/翻转预览模式 &nbsp; <kbd class="kbd">拖入文件</kbd> 加载RLE</div>
+    </div>
+  </div>
+</aside>
+
+<!-- Bottom Transport & Speed Control Dock -->
+<footer id="bottom-bar" class="hud-panel">
+  <div class="transport-group">
+    <button id="btn-undo" class="btn btn-mono" title="回退上一代或上一次编辑操作 [Z / Ctrl+Z]">⏮ 回退 (<span id="undo-count">0</span>)</button>
+    <button id="btn-play" class="btn primary" style="min-width:96px;font-weight:700;" title="开始/暂停物理演化 [Space]">▶ 运行演化</button>
+    <button id="btn-step-1" class="btn btn-mono" title="单步前进 1 代 [S]">+1步</button>
+    <button id="btn-step-10" class="btn btn-mono" title="快速推进 10 代">+10步</button>
+    <button id="btn-step-100" class="btn btn-mono" title="爆发演算 100 代">+100步</button>
+  </div>
+
+  <div class="divider-v"></div>
+
+  <div class="transport-group" style="min-width:230px;">
+    <div class="slider-row" style="width:100%;">
+      <div class="slider-header">
+        <span>目标步进频率 (Target TPS)</span>
+        <span id="val-tps-target" class="val">60 TPS</span>
+      </div>
+      <input id="slider-tps" type="range" min="1" max="100" value="48" />
+    </div>
+  </div>
+
+  <div class="transport-group">
+    <button id="btn-turbo" class="btn btn-mono" title="解除帧率锁，释放单帧时间预算内最大算力 (1000+ TPS)">⚡ 极限超频</button>
+  </div>
+</footer>
+
+<!-- RLE Import / Export & Clipboard Modal -->
+<div id="rle-modal" class="modal-backdrop">
+  <div class="modal-window">
+    <div class="panel-header">
+      <span>标准 RLE / CELLS 模式编解码终端</span>
+      <button id="btn-close-modal" class="btn" style="padding:2px 8px;">✕</button>
+    </div>
+    <div class="modal-body">
+      <div style="font-size:12px;color:var(--text-muted);line-height:1.4;">
+        支持完整 <code>.rle</code>（含 <code>x = ..., y = ..., rule = ...</code>、数字游程与 <code>$</code> 多行跨度）及 <code>.cells</code> 纯文本格式。您也可以直接在主界面按 <kbd class="kbd">Ctrl+V</kbd> 粘贴或将文件拖入画布。
+      </div>
+      <textarea id="rle-textarea" class="rle-textarea" spellcheck="false" placeholder="#N Gosper glider gun&#10;x = 36, y = 9, rule = B3/S23&#10;24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!"></textarea>
+      <div style="display:flex;justify-content:space-between;align-items:center;flex-wrap:wrap;gap:8px;">
+        <div style="display:flex;gap:6px;">
+          <button id="btn-serialize-world" class="btn">📤 提取当前世界为 RLE</button>
+          <button id="btn-copy-rle" class="btn">📋 复制到剪贴板</button>
+          <label class="btn" style="cursor:pointer;">
+            📂 读取本地文件
+            <input id="file-input-rle" type="file" accept=".rle,.cells,.txt,.lif" style="display:none;" />
+          </label>
+        </div>
+        <div style="display:flex;gap:6px;">
+          <button id="btn-load-rle-stamp" class="btn primary">📍 作为预览印章载入</button>
+          <button id="btn-load-rle-center" class="btn">🎯 清空并直接居中生成</button>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<!-- Drag & Drop File Overlay -->
+<div id="drop-overlay">
+  <div style="font-size:36px;">📥</div>
+  <div style="font-family:var(--font-mono);font-size:18px;font-weight:700;color:var(--accent-cyan);">释放以载入 .RLE / .CELLS 模式文件</div>
+  <div style="color:var(--text-muted);">自动解析游程编码并进入可视化放置预览模式</div>
+</div>
+
+<!-- Toast Feedback -->
+<div id="toast">系统就绪</div>
+
+<script>
+/**
+ * ============================================================================
+ * LIFE//OS — 工业级《康威生命游戏》全功能仿真工作站
+ * 核心架构：
+ *   1. Chunked Sparse Hash Grid (32x32 位运算分块稀疏哈希网格 + Uint32Array 行位图)
+ *   2. Object Pool & Double-Buffered Bitwise Row-Parallel Tick Engine (零 GC 抖动)
+ *   3. Multi-LOD Infinite Viewport Renderer (Micro 细胞级 / Meso 块级 / Macro 聚合级)
+ *   4. Standard RLE & .cells Parser / Encoder + Drag-and-Drop & Clipboard Engine
+ *   5. Circular History Ring Buffer (支持 40 步无损回退快照)
+ * ============================================================================
+ */
+(() => {
+  'use strict';
+
+  // --------------------------------------------------------------------------
+  // 1. 常量与位运算查表预计算 (Bitwise Lookup Tables)
+  // --------------------------------------------------------------------------
+  const CHUNK_SIZE = 32;
+  const CHUNK_SHIFT = 5; // 2^5 = 32
+  const CHUNK_MASK = 31; // 0b11111
+
+  // 16-bit 汉明重量查表 (Popcount LUT for fast 32-bit live cell counting)
+  const POPCOUNT_16 = new Uint8Array(65536);
+  for (let i = 0; i < 65536; i++) {
+    let v = i;
+    v = v - ((v >> 1) & 0x5555);
+    v = (v & 0x3333) + ((v >> 2) & 0x3333);
+    POPCOUNT_16[i] = (((v + (v >> 4)) & 0x0F0F) * 0x0101) >> 8;
+  }
+
+  function popcnt32(x) {
+    return POPCOUNT_16[x & 0xFFFF] + POPCOUNT_16[x >>> 16];
+  }
+
+  /**
+   * 将二维 Chunk 坐标 (cx, cy) 打包为单个 IEEE-754 安全整数键 (52-bit)
+   * 支持 cx, cy 在 [-33554432, +33554431] 范围内，即超过 ±10亿 细胞坐标空间
+   */
+  const COORD_BIAS = 0x2000000; // 2^25
+  const COORD_MUL = 0x4000000;  // 2^26
+  function packChunkKey(cx, cy) {
+    return (cx + COORD_BIAS) * COORD_MUL + (cy + COORD_BIAS);
+  }
+
+  // 年龄色谱调色板 (0..255 代细胞颜色映射: 新生亮青色 -> 翠绿 -> 电光蓝 -> 深紫)
+  const AGE_PALETTE_CSS = new Array(256);
+  const AGE_PALETTE_ABGR = new Uint32Array(256);
+  for (let a = 0; a < 256; a++) {
+    let r, g, b;
+    if (a <= 1) {
+      r = 0; g = 245; b = 254; // 新生第1代：高亮青色
+    } else if (a < 8) {
+      const t = (a - 1) / 7;
+      r = Math.round(0 + t * 16);
+      g = Math.round(245 - t * 60);
+      b = Math.round(254 - t * 125);
+    } else if (a < 45) {
+      const t = (a - 8) / 37;
+      r = Math.round(16 + t * 42);
+      g = Math.round(185 - t * 55);
+      b = Math.round(129 + t * 115);
+    } else {
+      const t = Math.min(1, (a - 45) / 150);
+      r = Math.round(58 + t * 110);
+      g = Math.round(130 - t * 45);
+      b = Math.round(244 - t * 10);
+    }
+    AGE_PALETTE_CSS[a] = `rgb(${r},${g},${b})`;
+    AGE_PALETTE_ABGR[a] = (255 << 24) | (b << 16) | (g << 8) | r;
+  }
+
+  // --------------------------------------------------------------------------
+  // 2. 分块数据结构与对象池 (Chunk & Object Pool)
+  // --------------------------------------------------------------------------
+  class Chunk {
+    constructor(cx = 0, cy = 0) {
+      this.cx = cx;
+      this.cy = cy;
+      this.key = packChunkKey(cx, cy);
+      // 32 行，每行 1 个 32位无符号整数 (bit x 对应列 x)
+      this.rows = new Uint32Array(32);
+      // 每个细胞的存活年龄 (0..255)，用于视觉染色
+      this.ages = new Uint8Array(1024);
+      this.population = 0;
+    }
+
+    init(cx, cy, key) {
+      this.cx = cx;
+      this.cy = cy;
+      this.key = key;
+      this.rows.fill(0);
+      this.ages.fill(0);
+      this.population = 0;
+      return this;
+    }
+
+    cloneDataFrom(other) {
+      this.cx = other.cx;
+      this.cy = other.cy;
+      this.key = other.key;
+      this.rows.set(other.rows);
+      this.ages.set(other.ages);
+      this.population = other.population;
+      return this;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 3. 高性能稀疏网格与全位并行步进引擎 (SparseWorld)
+  // --------------------------------------------------------------------------
+  class SparseWorld {
+    constructor() {
+      this.chunks = new Map();     // key -> Chunk
+      this.nextChunks = new Map(); // 双缓冲下一代 Map
+      this.chunkPool = [];         // 对象池避免 GC
+      this.candidateMap = new Map(); // 候选演化 Chunk 收集器
+      this.generation = 0;
+      this.population = 0;
+
+      // 默认规则 B3/S23
+      this.ruleString = 'B3/S23';
+      this.birthMask = 1 << 3;
+      this.surviveMask = (1 << 2) | (1 << 3);
+
+      // 预分配复用数组，用于单个 Chunk 的 34 行扩展邻域计算 (0..33)
+      this._extRows = new Uint32Array(34);
+      this._rowH1 = new Uint32Array(34);
+      this._rowH2 = new Uint32Array(34);
+      // MODIFIED: 预分配当前行左右邻居半加器缓存，消除内层循环二次跨块寻址
+      this._rowMid1 = new Uint32Array(34);
+      this._rowMid2 = new Uint32Array(34);
+    }
+
+    allocChunk(cx, cy, key) {
+      if (this.chunkPool.length > 0) {
+        return this.chunkPool.pop().init(cx, cy, key);
+      }
+      return new Chunk(cx, cy);
+    }
+
+    freeChunk(chunk) {
+      if (this.chunkPool.length < 8192) {
+        this.chunkPool.push(chunk);
+      }
+    }
+
+    /**
+     * 解析标准 B/S 规则字符串，例如 "B3/S23", "B36/S23", "23/3"
+     */
+    setRule(ruleStr) {
+      const clean = (ruleStr || '').trim().toUpperCase();
+      let bMask = 0;
+      let sMask = 0;
+
+      if (clean.includes('/')) {
+        const parts = clean.split('/');
+        for (const p of parts) {
+          if (p.startsWith('B')) {
+            for (let i = 1; i < p.length; i++) {
+              const n = p.charCodeAt(i) - 48;
+              if (n >= 0 && n <= 8) bMask |= (1 << n);
+            }
+          } else if (p.startsWith('S')) {
+            for (let i = 1; i < p.length; i++) {
+              const n = p.charCodeAt(i) - 48;
+              if (n >= 0 && n <= 8) sMask |= (1 << n);
+            }
+          }
+        }
+        // 兼容无前缀格式如 "23/3" (S/B)
+        if (!clean.includes('B') && !clean.includes('S')) {
+          for (const ch of parts[0]) {
+            const n = ch.charCodeAt(0) - 48;
+            if (n >= 0 && n <= 8) sMask |= (1 << n);
+          }
+          for (const ch of parts[1]) {
+            const n = ch.charCodeAt(0) - 48;
+            if (n >= 0 && n <= 8) bMask |= (1 << n);
+          }
+        }
+      }
+
+      if (bMask === 0 && sMask === 0) return false;
+      this.birthMask = bMask;
+      this.surviveMask = sMask;
+
+      let bStr = 'B', sStr = 'S';
+      for (let i = 0; i <= 8; i++) {
+        if (bMask & (1 << i)) bStr += i;
+        if (sMask & (1 << i)) sStr += i;
+      }
+      this.ruleString = `${bStr}/${sStr}`;
+      return true;
+    }
+
+    clear() {
+      for (const ch of this.chunks.values()) {
+        this.freeChunk(ch);
+      }
+      this.chunks.clear();
+      this.generation = 0;
+      this.population = 0;
+    }
+
+    getCell(x, y) {
+      const cx = x >> CHUNK_SHIFT;
+      const cy = y >> CHUNK_SHIFT;
+      const ch = this.chunks.get(packChunkKey(cx, cy));
+      if (!ch) return 0;
+      const lx = x & CHUNK_MASK;
+      const ly = y & CHUNK_MASK;
+      return (ch.rows[ly] >>> lx) & 1;
+    }
+
+    setCell(x, y, alive) {
+      const cx = x >> CHUNK_SHIFT;
+      const cy = y >> CHUNK_SHIFT;
+      const key = packChunkKey(cx, cy);
+      const lx = x & CHUNK_MASK;
+      const ly = y & CHUNK_MASK;
+      const bit = 1 << lx;
+
+      let ch = this.chunks.get(key);
+      if (alive) {
+        if (!ch) {
+          ch = this.allocChunk(cx, cy, key);
+          this.chunks.set(key, ch);
+        }
+        if ((ch.rows[ly] & bit) === 0) {
+          ch.rows[ly] |= bit;
+          ch.ages[(ly << 5) | lx] = 1;
+          ch.population++;
+          this.population++;
+        }
+      } else {
+        if (!ch) return;
+        if ((ch.rows[ly] & bit) !== 0) {
+          ch.rows[ly] &= ~bit;
+          ch.ages[(ly << 5) | lx] = 0;
+          ch.population--;
+          this.population--;
+          if (ch.population === 0) {
+            this.chunks.delete(key);
+            this.freeChunk(ch);
+          }
+        }
+      }
+    }
+
+    /**
+     * 核心步进算法 (Bitwise Full-Adder Row-Parallel + Boundary Halo Evaluation)
+     * 对每个候选 32x32 Chunk，利用全加器位并行电路在单次位运算中同时求出整行 32 个细胞的 8 邻域计数！
+     */
+    step() {
+      this.candidateMap.clear();
+
+      // 1. 标记所有活跃 Chunk 及其周边触达的相邻 Chunk
+      for (const ch of this.chunks.values()) {
+        if (ch.population === 0) continue;
+        const cx = ch.cx;
+        const cy = ch.cy;
+
+        // 检查边界溢出需求，仅当边界有活细胞时才唤醒对应方向的邻居 Chunk，大幅减少无效空块计算
+        const topTouch = ch.rows[0] !== 0;
+        const botTouch = ch.rows[31] !== 0;
+        let leftTouch = false;
+        let rightTouch = false;
+        for (let i = 0; i < 32; i++) {
+          const r = ch.rows[i];
+          if (r & 1) leftTouch = true;
+          if (r & 0x80000000) rightTouch = true;
+        }
+
+        // MODIFIED: 移除冗余的 (cx << 16) ^ cy 写入，直接走零对象分配的 _markCandidate
+        this._markCandidate(cx, cy);
+        if (topTouch) this._markCandidate(cx, cy - 1);
+        if (botTouch) this._markCandidate(cx, cy + 1);
+        if (leftTouch) this._markCandidate(cx - 1, cy);
+        if (rightTouch) this._markCandidate(cx + 1, cy);
+        if (topTouch && leftTouch && (ch.rows[0] & 1)) this._markCandidate(cx - 1, cy - 1);
+        if (topTouch && rightTouch && (ch.rows[0] & 0x80000000)) this._markCandidate(cx + 1, cy - 1);
+        if (botTouch && leftTouch && (ch.rows[31] & 1)) this._markCandidate(cx - 1, cy + 1);
+        if (botTouch && rightTouch && (ch.rows[31] & 0x80000000)) this._markCandidate(cx + 1, cy + 1);
+      }
+
+      let totalPop = 0;
+      const ext = this._extRows;
+      const h1 = this._rowH1;
+      const h2 = this._rowH2;
+      // MODIFIED: 引用预分配的左右邻居半加器数组
+      const m1 = this._rowMid1;
+      const m2 = this._rowMid2;
+      const bMask = this.birthMask;
+      const sMask = this.surviveMask;
+
+      // 2. 遍历所有候选 Chunk 执行位并行演化
+      // MODIFIED: candidateMap 的 value 直接存储打包后的 key，零临时对象分配反解 cx, cy
+      for (const key of this.candidateMap.keys()) {
+        const cx = Math.floor(key / COORD_MUL) - COORD_BIAS;
+        const cy = (key % COORD_MUL) - COORD_BIAS;
+
+        const cCenter = this.chunks.get(key);
+        const cN  = this.chunks.get(packChunkKey(cx, cy - 1));
+        const cS  = this.chunks.get(packChunkKey(cx, cy + 1));
+        const cW  = this.chunks.get(packChunkKey(cx - 1, cy));
+        const cE  = this.chunks.get(packChunkKey(cx + 1, cy));
+        const cNW = this.chunks.get(packChunkKey(cx - 1, cy - 1));
+        const cNE = this.chunks.get(packChunkKey(cx + 1, cy - 1));
+        const cSW = this.chunks.get(packChunkKey(cx - 1, cy + 1));
+        const cSE = this.chunks.get(packChunkKey(cx + 1, cy + 1));
+
+        // 构造上下扩展行 0 和 33
+        ext[0]  = cN ? cN.rows[31] : 0;
+        ext[33] = cS ? cS.rows[0]  : 0;
+        if (cCenter) {
+          for (let i = 0; i < 32; i++) ext[i + 1] = cCenter.rows[i];
+        } else {
+          for (let i = 1; i <= 32; i++) ext[i] = 0;
+        }
+
+        // 计算 0..33 每一行的水平三元组和 (left, center, right) -> 2-bit 半加器结果 (h2, h1)
+        for (let r = 0; r < 34; r++) {
+          const row = ext[r];
+          // 获取左邻居(cx-1)最右列(bit 31) 与 右邻居(cx+1)最左列(bit 0)
+          let wBit = 0;
+          let eBit = 0;
+          if (r === 0) {
+            if (cNW) wBit = (cNW.rows[31] >>> 31) & 1;
+            if (cNE) eBit = (cNE.rows[31] & 1) << 31;
+          } else if (r === 33) {
+            if (cSW) wBit = (cSW.rows[0] >>> 31) & 1;
+            if (cSE) eBit = (cSE.rows[0] & 1) << 31;
+          } else {
+            const idx = r - 1;
+            if (cW) wBit = (cW.rows[idx] >>> 31) & 1;
+            if (cE) eBit = (cE.rows[idx] & 1) << 31;
+          }
+
+          // bit x 的左邻居在 bit (x-1)，即 (row << 1) | wBit
+          // bit x 的右邻居在 bit (x+1)，即 (row >>> 1) | eBit
+          const l = (row << 1) | wBit;
+          const right = (row >>> 1) | eBit;
+
+          // 对 l, right (不计自身) 还是包含自身？我们先计算 l + right + row (3个输入的全加器)
+          const x1 = l ^ right;
+          const c1 = l & right;
+          // MODIFIED: 缓存当前行左右邻居半加器结果，供第二阶段直接使用
+          m1[r] = x1;
+          m2[r] = c1;
+          h1[r] = x1 ^ row;           // 3像素和的 bit 0
+          h2[r] = c1 | (x1 & row);    // 3像素和的 bit 1
+        }
+
+        let nextChunk = null;
+        let chunkPop = 0;
+
+        // 对 Chunk 内部 1..32 行进行垂直汇总与状态转移
+        for (let y = 1; y <= 32; y++) {
+          const cur = ext[y];
+          const rIdx = y - 1;
+          // MODIFIED: 直接复用第一阶段已算出的左右邻居之和 (不含中心细胞)
+          const mid1 = m1[y];
+          const mid2 = m2[y];
+
+          // 上下两行各自的三元组和: 范围 0..3
+          const top1 = h1[y - 1], top2 = h2[y - 1];
+          const bot1 = h1[y + 1], bot2 = h2[y + 1];
+
+          // 位并行加法器: 将 (top2,top1) + (bot2,bot1) + (mid2,mid1) 相加得到 4-bit 邻居数 (s8, s4, s2, s1)
+          // 第一步: 3个 1-bit 权重位 (top1, bot1, mid1) 全加器 -> (s1, carry1)
+          const t1 = top1 ^ bot1;
+          const s1 = t1 ^ mid1;
+          const carry1 = (top1 & bot1) | (t1 & mid1);
+
+          // 第二步: 3个 2-bit 权重位 (top2, bot2, mid2) 全加器 -> (sum2_a, carry2_a)
+          const t2 = top2 ^ bot2;
+          const sum2_a = t2 ^ mid2;
+          const carry2_a = (top2 & bot2) | (t2 & mid2);
+
+          // 第三步: 将 sum2_a 与 carry1 半加器合成最终 s2，进位并入 4-bit 权重位
+          const s2 = sum2_a ^ carry1;
+          const carry2_b = sum2_a & carry1;
+
+          // 第四步: s4 与 s8 (最大值 8，此时 carry2_a 与 carry2_b 不可能同时为 1，但用半加器严谨处理)
+          const s4 = carry2_a ^ carry2_b;
+          const s8 = carry2_a & carry2_b;
+
+          let nextRow = 0;
+          // 经典 B3/S23 极速分支（仅需 6 次位运算完成整行 32 细胞演化！）
+          if (bMask === 8 && sMask === 12) {
+            // 邻居数为 2 或 3 等价于: s8=0, s4=0, s2=1, s1=(0或1)
+            // 存活/诞生公式: (~s8 & ~s4 & s2) & (s1 | cur)
+            nextRow = (~s8 & ~s4 & s2) & (s1 | cur);
+          } else {
+            // 通用任意 B/S 规则位并行合成
+            const n0 = ~s8 & ~s4 & ~s2 & ~s1;
+            const n1 = ~s8 & ~s4 & ~s2 &  s1;
+            const n2 = ~s8 & ~s4 &  s2 & ~s1;
+            const n3 = ~s8 & ~s4 &  s2 &  s1;
+            const n4 = ~s8 &  s4 & ~s2 & ~s1;
+            const n5 = ~s8 &  s4 & ~s2 &  s1;
+            const n6 = ~s8 &  s4 &  s2 & ~s1;
+            const n7 = ~s8 &  s4 &  s2 &  s1;
+            const n8 =  s8 & ~s4 & ~s2 & ~s1;
+
+            let birthBits = 0;
+            let survBits = 0;
+            if (bMask & 1)   birthBits |= n0;
+            if (bMask & 2)   birthBits |= n1;
+            if (bMask & 4)   birthBits |= n2;
+            if (bMask & 8)   birthBits |= n3;
+            if (bMask & 16)  birthBits |= n4;
+            if (bMask & 32)  birthBits |= n5;
+            if (bMask & 64)  birthBits |= n6;
+            if (bMask & 128) birthBits |= n7;
+            if (bMask & 256) birthBits |= n8;
+
+            if (sMask & 1)   survBits |= n0;
+            if (sMask & 2)   survBits |= n1;
+            if (sMask & 4)   survBits |= n2;
+            if (sMask & 8)   survBits |= n3;
+            if (sMask & 16)  survBits |= n4;
+            if (sMask & 32)  survBits |= n5;
+            if (sMask & 64)  survBits |= n6;
+            if (sMask & 128) survBits |= n7;
+            if (sMask & 256) survBits |= n8;
+
+            nextRow = ((~cur) & birthBits) | (cur & survBits);
+          }
+
+          if (nextRow !== 0) {
+            if (!nextChunk) {
+              nextChunk = this.allocChunk(cx, cy, key);
+            }
+            nextChunk.rows[rIdx] = nextRow;
+            const rowPop = popcnt32(nextRow);
+            chunkPop += rowPop;
+
+            // 更新该行活细胞的年龄色谱
+            const ageBase = rIdx << 5;
+            const oldAges = cCenter ? cCenter.ages : null;
+            let bits = nextRow;
+            while (bits !== 0) {
+              const bitPos = 31 - Math.clz32(bits & -bits);
+              const idx = ageBase | bitPos;
+              const prevAge = (oldAges && ((cur >>> bitPos) & 1)) ? oldAges[idx] : 0;
+              nextChunk.ages[idx] = prevAge < 255 ? prevAge + 1 : 255;
+              bits &= bits - 1;
+            }
+          }
+        }
+
+        if (nextChunk) {
+          nextChunk.population = chunkPop;
+          this.nextChunks.set(key, nextChunk);
+          totalPop += chunkPop;
+        }
+      }
+
+      // 3. 回收旧一代 Chunk 进入对象池，完成双缓冲交换
+      for (const oldChunk of this.chunks.values()) {
+        this.freeChunk(oldChunk);
+      }
+      this.chunks.clear();
+
+      const temp = this.chunks;
+      this.chunks = this.nextChunks;
+      this.nextChunks = temp;
+
+      this.generation++;
+      this.population = totalPop;
+    }
+
+    // MODIFIED: 零对象分配标记候选块
+    _markCandidate(cx, cy) {
+      const key = packChunkKey(cx, cy);
+      this.candidateMap.set(key, true);
+    }
+
+    /**
+     * 计算当前世界所有活细胞的精确轴对齐包围盒 (Bounding Box)
+     */
+    getBoundingBox() {
+      if (this.population === 0) return null;
+      let minX = Infinity, minY = Infinity;
+      let maxX = -Infinity, maxY = -Infinity;
+
+      for (const ch of this.chunks.values()) {
+        if (ch.population === 0) continue;
+        const baseX = ch.cx << CHUNK_SHIFT;
+        const baseY = ch.cy << CHUNK_SHIFT;
+        for (let ly = 0; ly < 32; ly++) {
+          const r = ch.rows[ly];
+          if (r === 0) continue;
+          const wy = baseY + ly;
+          if (wy < minY) minY = wy;
+          if (wy > maxY) maxY = wy;
+
+          const firstBit = 31 - Math.clz32(r & -r);
+          const lastBit = 31 - Math.clz32(r);
+          if (baseX + firstBit < minX) minX = baseX + firstBit;
+          if (baseX + lastBit > maxX) maxX = baseX + lastBit;
+        }
+      }
+      if (minX > maxX) return null;
+      return { minX, minY, maxX, maxY, width: maxX - minX + 1, height: maxY - minY + 1 };
+    }
+
+    /**
+     * 创建轻量级内存快照 (用于历史环形缓冲区回退)
+     */
+    createSnapshot() {
+      const snapChunks = [];
+      for (const ch of this.chunks.values()) {
+        if (ch.population > 0) {
+          snapChunks.push({
+            cx: ch.cx,
+            cy: ch.cy,
+            key: ch.key,
+            rows: new Uint32Array(ch.rows),
+            ages: new Uint8Array(ch.ages),
+            population: ch.population
+          });
+        }
+      }
+      return {
+        generation: this.generation,
+        population: this.population,
+        ruleString: this.ruleString,
+        chunks: snapChunks
+      };
+    }
+
+    restoreSnapshot(snap) {
+      if (!snap) return;
+      this.clear();
+      this.generation = snap.generation;
+      this.population = snap.population;
+      this.setRule(snap.ruleString);
+      for (const item of snap.chunks) {
+        const ch = this.allocChunk(item.cx, item.cy, item.key);
+        ch.rows.set(item.rows);
+        ch.ages.set(item.ages);
+        ch.population = item.population;
+        this.chunks.set(ch.key, ch);
+      }
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 4. 历史快照环形缓冲区 (Circular History Ring Buffer)
+  // --------------------------------------------------------------------------
+  class HistoryRingBuffer {
+    constructor(capacity = 40) {
+      this.capacity = capacity;
+      this.buffer = new Array(capacity);
+      this.head = 0;
+      this.size = 0;
+    }
+
+    push(snapshot) {
+      this.buffer[this.head] = snapshot;
+      this.head = (this.head + 1) % this.capacity;
+      if (this.size < this.capacity) {
+        this.size++;
+      }
+    }
+
+    pop() {
+      if (this.size === 0) return null;
+      this.head = (this.head - 1 + this.capacity) % this.capacity;
+      const snap = this.buffer[this.head];
+      this.buffer[this.head] = null;
+      this.size--;
+      return snap;
+    }
+
+    clear() {
+      this.buffer.fill(null);
+      this.head = 0;
+      this.size = 0;
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 5. 标准 RLE 与 .CELLS 编解码引擎 (Pattern Engine & Classic Library)
+  // --------------------------------------------------------------------------
+  class PatternEngine {
+    /**
+     * 解析标准 .rle 或 .cells 文本为归一化相对坐标集合
+     */
+    static parse(text, fallbackName = 'Custom Pattern') {
+      const lines = text.replace(/\r\n/g, '\n').split('\n');
+      let name = fallbackName;
+      let rule = 'B3/S23';
+      let isCellsFormat = false;
+
+      // 检测是否为 .cells (Plaintext) 格式
+      for (const rawLine of lines) {
+        const l = rawLine.trim();
+        if (l.startsWith('!Name:')) {
+          name = l.substring(6).trim() || fallbackName;
+          isCellsFormat = true;
+        } else if (l.startsWith('!')) {
+          isCellsFormat = true;
+        } else if (/^[.O*]+$/.test(l) && !l.includes('$') && !l.includes('b')) {
+          isCellsFormat = true;
+        }
+      }
+
+      const cells = [];
+
+      if (isCellsFormat) {
+        let y = 0;
+        for (const rawLine of lines) {
+          const line = rawLine.trimEnd();
+          if (line.startsWith('!') || line.startsWith('#') || line.length === 0) continue;
+          for (let x = 0; x < line.length; x++) {
+            const c = line[x];
+            if (c === 'O' || c === '*' || c === 'o') {
+              cells.push([x, y]);
+            }
+          }
+          y++;
+        }
+      } else {
+        // 标准 RLE 解码器
+        let rleBody = '';
+        for (const rawLine of lines) {
+          const line = rawLine.trim();
+          if (!line) continue;
+          if (line.startsWith('#')) {
+            if (line.startsWith('#N') || line.startsWith('#n')) {
+              const extracted = line.substring(2).trim();
+              if (extracted) name = extracted;
+            }
+            continue;
+          }
+          if (/^x\s*=/i.test(line)) {
+            const ruleMatch = line.match(/rule\s*=\s*([A-Za-z0-9\/]+)/i);
+            if (ruleMatch) rule = ruleMatch[1];
+            continue;
+          }
+          rleBody += line;
+          if (line.includes('!')) break;
+        }
+
+        let x = 0, y = 0;
+        let count = 0;
+        for (let i = 0; i < rleBody.length; i++) {
+          const ch = rleBody[i];
+          if (ch >= '0' && ch <= '9') {
+            count = count * 10 + (ch.charCodeAt(0) - 48);
+          } else if (ch === 'b' || ch === '.') {
+            x += (count || 1);
+            count = 0;
+          } else if (ch === 'o' || ch === 'O' || ch === '*' || (ch >= 'A' && ch <= 'Z')) {
+            const run = count || 1;
+            for (let k = 0; k < run; k++) {
+              cells.push([x + k, y]);
+            }
+            x += run;
+            count = 0;
+          } else if (ch === '$') {
+            y += (count || 1);
+            x = 0;
+            count = 0;
+          } else if (ch === '!') {
+            break;
+          }
+        }
+      }
+
+      return PatternEngine.normalizePattern({ name, rule, cells });
+    }
+
+    /**
+     * 将图案归一化至 (0,0) 起点的紧凑包围盒，并计算宽高
+     */
+    static normalizePattern(pat) {
+      if (!pat.cells || pat.cells.length === 0) {
+        return { name: pat.name || 'Empty', rule: pat.rule || 'B3/S23', width: 1, height: 1, cells: [] };
+      }
+      let minX = Infinity, minY = Infinity;
+      let maxX = -Infinity, maxY = -Infinity;
+      for (const [x, y] of pat.cells) {
+        if (x < minX) minX = x;
+        if (y < minY) minY = y;
+        if (x > maxX) maxX = x;
+        if (y > maxY) maxY = y;
+      }
+      const normCells = pat.cells.map(([x, y]) => [x - minX, y - minY]);
+      return {
+        name: pat.name || 'Pattern',
+        rule: pat.rule || 'B3/S23',
+        width: maxX - minX + 1,
+        height: maxY - minY + 1,
+        cells: normCells
+      };
+    }
+
+    /**
+     * 顺时针旋转 90 度
+     */
+    static rotateCW(pat) {
+      const rotated = pat.cells.map(([x, y]) => [pat.height - 1 - y, x]);
+      return PatternEngine.normalizePattern({
+        name: pat.name,
+        rule: pat.rule,
+        cells: rotated
+      });
+    }
+
+    /**
+     * 水平镜像翻转
+     */
+    static flipHorizontal(pat) {
+      const flipped = pat.cells.map(([x, y]) => [pat.width - 1 - x, y]);
+      return PatternEngine.normalizePattern({
+        name: pat.name,
+        rule: pat.rule,
+        cells: flipped
+      });
+    }
+
+    /**
+     * 垂直镜像翻转
+     */
+    static flipVertical(pat) {
+      const flipped = pat.cells.map(([x, y]) => [x, pat.height - 1 - y]);
+      return PatternEngine.normalizePattern({
+        name: pat.name,
+        rule: pat.rule,
+        cells: flipped
+      });
+    }
+
+    /**
+     * 将当前 SparseWorld 中的所有活细胞序列化为标准游程压缩 RLE 字符串
+     */
+    static serializeWorldToRLE(world) {
+      const bbox = world.getBoundingBox();
+      if (!bbox) {
+        return `#N Empty World\nx = 0, y = 0, rule = ${world.ruleString}\n!`;
+      }
+      const { minX, minY, maxX, maxY, width, height } = bbox;
+
+      // 防止超大跨度导致行扫描过慢，提取所有活细胞并按 (y, x) 排序
+      const pts = [];
+      for (const ch of world.chunks.values()) {
+        if (ch.population === 0) continue;
+        const bx = ch.cx << CHUNK_SHIFT;
+        const by = ch.cy << CHUNK_SHIFT;
+        for (let ly = 0; ly < 32; ly++) {
+          let r = ch.rows[ly];
+          while (r !== 0) {
+            const lx = 31 - Math.clz32(r & -r);
+            pts.push({ x: bx + lx - minX, y: by + ly - minY });
+            r &= r - 1;
+          }
+        }
+      }
+
+      pts.sort((a, b) => (a.y !== b.y ? a.y - b.y : a.x - b.x));
+
+      const tokens = [];
+      let curY = 0;
+      let curX = 0;
+      let i = 0;
+
+      while (i < pts.length) {
+        const pt = pts[i];
+        if (pt.y > curY) {
+          const dy = pt.y - curY;
+          tokens.push(dy > 1 ? `${dy}$` : '$');
+          curY = pt.y;
+          curX = 0;
+        }
+        if (pt.x > curX) {
+          const dx = pt.x - curX;
+          tokens.push(dx > 1 ? `${dx}b` : 'b');
+          curX = pt.x;
+        }
+        // 统计连续活细胞游程
+        let run = 1;
+        while (i + run < pts.length && pts[i + run].y === curY && pts[i + run].x === curX + run) {
+          run++;
+        }
+        tokens.push(run > 1 ? `${run}o` : 'o');
+        curX += run;
+        i += run;
+      }
+      tokens.push('!');
+
+      // 每行控制在 70 字符以内，符合 LifeWiki 标准 RLE 规范
+      let lines = [
+        `#N LIFE//OS Export (Gen ${world.generation}, Pop ${world.population})`,
+        `x = ${width}, y = ${height}, rule = ${world.ruleString}`
+      ];
+      let currentLine = '';
+      for (const tk of tokens) {
+        if (currentLine.length + tk.length > 70) {
+          lines.push(currentLine);
+          currentLine = tk;
+        } else {
+          currentLine += tk;
+        }
+      }
+      if (currentLine) lines.push(currentLine);
+      return lines.join('\n');
+    }
+  }
+
+  // 内置 12 个经典与高阶生命游戏模式库
+  const CLASSIC_PATTERNS = [
+    {
+      name: '高斯帕滑翔机机枪 (Gosper Glider Gun)',
+      tag: 'GUN / P30',
+      desc: '首个被发现的有限大小无限增长结构，每 30 代发射一架滑翔机。',
+      rle: `x = 36, y = 9, rule = B3/S23\n24bo$22bobo$12b2o6b2o12b2o$11bo3bo4b2o12b2o$2o8bo5bo3b2o$2o8bo3bob2o4bobo$10bo5bo7bo$11bo3bo$12b2o!`
+    },
+    {
+      name: '西姆金滑翔机机枪 (Simkin Glider Gun)',
+      tag: 'GUN / P120',
+      desc: '比高斯帕机枪拥有更少初始活细胞 (28个) 的紧凑型周期 120 滑翔机发射器。',
+      rle: `x = 33, y = 21, rule = B3/S23\n2o5b2o$2o5b2o2$4b2o$4b2o5$22b2oba2o$21bo5bo$21bo6bo2b2o$21b3o3bo3b2o$26bo4$20b2o$20bo$21b3o$23bo!`
+    },
+    {
+      name: '太空繁殖者 / 喷射列车 (Puffer Train)',
+      tag: 'PUFFER',
+      desc: '康威设计的经典推进引擎，以 c/2 速度高速前进并在尾部留下一串演化尾迹。',
+      rle: `x = 5, y = 18, rule = B3/S23\n3bo$4bo$o3bo$b4o4$o$b2o$2bo$2bo$bo3$3bo$4bo$o3bo$b4o!`
+    },
+    {
+      name: '造块开关引擎 (Block-Laying Switch Engine)',
+      tag: 'INFINITE',
+      desc: '著名无限繁殖者：通过自身对角线回旋运动，在身后持续铺设稳定方块阵列。',
+      rle: `x = 8, y = 6, rule = B3/S23\n6bo$4bobo$2o3bo$2o$4bo$5b2o!`
+    },
+    {
+      name: '橡果 (Acorn — Methuselah)',
+      tag: '5206 GEN',
+      desc: '仅由 7 个细胞组成的传奇长寿火种，经历 5206 代剧烈混沌后稳定为 633 个细胞。',
+      rle: `x = 7, y = 3, rule = B3/S23\nbo$3bo$2o2b3o!`
+    },
+    {
+      name: '脉冲星 (Pulsar)',
+      tag: 'OSC / P3',
+      desc: '极具视觉对称美的经典周期 3 振荡器，四象限同步呼吸脉动。',
+      rle: `x = 13, y = 13, rule = B3/S23\n2b3o3b3o2$o4bobo4bo$o4bobo4bo$o4bobo4bo$2b3o3b3o2$2b3o3b3o$o4bobo4bo$o4bobo4bo$o4bobo4bo2$2b3o3b3o!`
+    },
+    {
+      name: '十五项全能 (Pentadecathlon)',
+      tag: 'OSC / P15',
+      desc: '高周期线性对称振荡器，以 15 代为完整循环周期进行往复吞吐。',
+      rle: `x = 10, y = 3, rule = B3/S23\n2bo4bo$2ob4ob2o$2bo4bo!`
+    },
+    {
+      name: '轻量级宇宙飞船 (LWSS)',
+      tag: 'SHIP / c/2',
+      desc: '以半光速 (c/2) 沿水平或垂直方向高速巡航的标准飞船。',
+      rle: `x = 5, y = 4, rule = B3/S23\nbo2bo$o$o3bo$4o!`
+    },
+    {
+      name: '重量级宇宙飞船 (HWSS)',
+      tag: 'SHIP / c/2',
+      desc: '体积更大的标准正交巡航飞船，常用于护航太空喷射机列车。',
+      rle: `x = 7, y = 5, rule = B3/S23\n2b2o$bo4bo$o$o5bo$6o!`
+    },
+    {
+      name: 'R-五格骨牌 (R-pentomino)',
+      tag: '1103 GEN',
+      desc: '康威最早研究的高活性五格骨牌，1103 代后稳定并向远方发射 6 架滑翔机。',
+      rle: `x = 3, y = 3, rule = B3/S23\nb2o$2o$bo!`
+    },
+    {
+      name: '硬汉 (Diehard)',
+      tag: '130 GEN',
+      desc: '7 个初始细胞在经历整整 130 代复杂演化后彻底灰飞烟灭（归零）。',
+      rle: `x = 8, y = 3, rule = B3/S23\n6bo$2o$bo3b3o!`
+    },
+    {
+      name: '标准滑翔机 (Glider)',
+      tag: 'SHIP / c/4',
+      desc: '生命游戏的标志性图腾，以 c/4 速度沿 45° 对角线无限行进。',
+      rle: `x = 3, y = 3, rule = B3/S23\nbo$2bo$3o!`
+    }
+  ];
+
+  // --------------------------------------------------------------------------
+  // 6. 无限虚拟相机与多级 LOD 视口渲染器 (Viewport & Camera Engine)
+  // --------------------------------------------------------------------------
+  class ViewportEngine {
+    constructor(canvas, minimapCanvas, world) {
+      this.canvas = canvas;
+      this.ctx = canvas.getContext('2d', { alpha: false });
+      this.minimapCanvas = minimapCanvas;
+      this.minimapCtx = minimapCanvas.getContext('2d', { alpha: false });
+      this.world = world;
+
+      // 虚拟相机状态: camX, camY 表示屏幕中心对应的世界细胞坐标
+      this.camX = 0;
+      this.camY = 0;
+      this.zoom = 14.0; // 每个细胞占用的 CSS 像素数 (支持 0.05x .. 40.0x)
+      this.targetZoom = 14.0;
+
+      // 惯性阻尼速度
+      this.velX = 0;
+      this.velY = 0;
+      this.isDraggingPan = false;
+
+      // 渲染开关
+      this.showGrid = true;
+      this.showChunkBorders = false;
+      this.showAgeColors = true;
+      this.showOrigin = true;
+
+      // 鼠标世界坐标
+      this.cursorWorldX = 0;
+      this.cursorWorldY = 0;
+      this.mouseScreenX = 0;
+      this.mouseScreenY = 0;
+
+      // 雷达视野跨度
+      this.radarSpan = 256;
+
+      this.resize();
+    }
+
+    resize() {
+      const dpr = window.devicePixelRatio || 1;
+      this.dpr = dpr;
+      this.width = window.innerWidth;
+      this.height = window.innerHeight;
+      this.canvas.width = Math.floor(this.width * dpr);
+      this.canvas.height = Math.floor(this.height * dpr);
+      this.ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    }
+
+    screenToWorld(sx, sy) {
+      const wx = Math.floor(this.camX + (sx - this.width * 0.5) / this.zoom);
+      const wy = Math.floor(this.camY + (sy - this.height * 0.5) / this.zoom);
+      return { x: wx, y: wy };
+    }
+
+    worldToScreen(wx, wy) {
+      const sx = (wx - this.camX) * this.zoom + this.width * 0.5;
+      const sy = (wy - this.camY) * this.zoom + this.height * 0.5;
+      return { x: sx, y: sy };
+    }
+
+    zoomAtScreenPoint(factor, sx, sy) {
+      const prevZoom = this.zoom;
+      const nextZoom = Math.max(0.05, Math.min(40.0, prevZoom * factor));
+      if (nextZoom === prevZoom) return;
+
+      // 保持鼠标指向的世界浮点坐标在缩放前后不发生偏移
+      const worldFloatX = this.camX + (sx - this.width * 0.5) / prevZoom;
+      const worldFloatY = this.camY + (sy - this.height * 0.5) / prevZoom;
+
+      this.zoom = nextZoom;
+      this.camX = worldFloatX - (sx - this.width * 0.5) / nextZoom;
+      this.camY = worldFloatY - (sy - this.height * 0.5) / nextZoom;
+      this.velX = 0;
+      this.velY = 0;
+    }
+
+    fitToActiveWorld() {
+      const bbox = this.world.getBoundingBox();
+      if (!bbox) {
+        this.resetToOrigin();
+        return;
+      }
+      this.camX = (bbox.minX + bbox.maxX + 1) * 0.5;
+      this.camY = (bbox.minY + bbox.maxY + 1) * 0.5;
+      const padW = Math.max(16, bbox.width * 1.35);
+      const padH = Math.max(16, bbox.height * 1.35);
+      const availW = Math.max(300, this.width - 580);
+      const availH = Math.max(240, this.height - 160);
+      this.zoom = Math.max(0.05, Math.min(28.0, Math.min(availW / padW, availH / padH)));
+      this.velX = 0;
+      this.velY = 0;
+    }
+
+    resetToOrigin() {
+      this.camX = 0;
+      this.camY = 0;
+      this.zoom = 14.0;
+      this.velX = 0;
+      this.velY = 0;
+    }
+
+    updateInertia() {
+      if (!this.isDraggingPan && (Math.abs(this.velX) > 0.01 || Math.abs(this.velY) > 0.01)) {
+        this.camX += this.velX / this.zoom;
+        this.camY += this.velY / this.zoom;
+        this.velX *= 0.88;
+        this.velY *= 0.88;
+        if (Math.abs(this.velX) < 0.05) this.velX = 0;
+        if (Math.abs(this.velY) < 0.05) this.velY = 0;
+      }
+    }
+
+    /**
+     * 主视口多级 LOD 渲染管道
+     */
+    render(stampState, toolState) {
+      this.updateInertia();
+
+      const ctx = this.ctx;
+      const w = this.width;
+      const h = this.height;
+      const zoom = this.zoom;
+
+      // 1. 清屏深空背景
+      ctx.fillStyle = '#07090e';
+      ctx.fillRect(0, 0, w, h);
+
+      // 计算当前视口覆盖的世界坐标范围与 Chunk 范围
+      const halfW = (w * 0.5) / zoom;
+      const halfH = (h * 0.5) / zoom;
+      const minWX = Math.floor(this.camX - halfW) - 1;
+      const maxWX = Math.ceil(this.camX + halfW) + 1;
+      const minWY = Math.floor(this.camY - halfH) - 1;
+      const maxWY = Math.ceil(this.camY + halfH) + 1;
+
+      const minCX = minWX >> CHUNK_SHIFT;
+      const maxCX = maxWX >> CHUNK_SHIFT;
+      const minCY = minWY >> CHUNK_SHIFT;
+      const maxCY = maxWY >> CHUNK_SHIFT;
+
+      // 2. 动态 LOD 网格渲染
+      if (this.showGrid) {
+        // 细粒度细胞网格线 (仅当 zoom >= 5.5px 时渲染，并根据缩放动态调节透明度)
+        if (zoom >= 5.5) {
+          const gridAlpha = Math.min(0.22, (zoom - 5.0) * 0.025);
+          ctx.strokeStyle = `rgba(56, 189, 248, ${gridAlpha.toFixed(3)})`;
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+
+          const startX = (minWX - this.camX) * zoom + w * 0.5;
+          for (let x = minWX, sx = startX; x <= maxWX; x++, sx += zoom) {
+            const px = Math.floor(sx) + 0.5;
+            ctx.moveTo(px, 0);
+            ctx.lineTo(px, h);
+          }
+
+          const startY = (minWY - this.camY) * zoom + h * 0.5;
+          for (let y = minWY, sy = startY; y <= maxWY; y++, sy += zoom) {
+            const py = Math.floor(sy) + 0.5;
+            ctx.moveTo(0, py);
+            ctx.lineTo(w, py);
+          }
+          ctx.stroke();
+        }
+
+        // 中观 32x32 Chunk 网格线 (当 zoom >= 0.4px 时渲染)
+        if (zoom >= 0.4) {
+          ctx.strokeStyle = 'rgba(56, 189, 248, 0.08)';
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          const chunkStep = 32 * zoom;
+          for (let cx = minCX; cx <= maxCX + 1; cx++) {
+            const sx = Math.floor(((cx << 5) - this.camX) * zoom + w * 0.5) + 0.5;
+            ctx.moveTo(sx, 0);
+            ctx.lineTo(sx, h);
+          }
+          for (let cy = minCY; cy <= maxCY + 1; cy++) {
+            const sy = Math.floor(((cy << 5) - this.camY) * zoom + h * 0.5) + 0.5;
+            ctx.moveTo(0, sy);
+            ctx.lineTo(w, sy);
+          }
+          ctx.stroke();
+        }
+      }
+
+      // 3. 十字世界坐标原点轴 (0,0)
+      if (this.showOrigin) {
+        const ox = Math.floor((0 - this.camX) * zoom + w * 0.5) + 0.5;
+        const oy = Math.floor((0 - this.camY) * zoom + h * 0.5) + 0.5;
+        ctx.strokeStyle = 'rgba(0, 242, 254, 0.26)';
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        if (ox >= 0 && ox <= w) {
+          ctx.moveTo(ox, 0);
+          ctx.lineTo(ox, h);
+        }
+        if (oy >= 0 && oy <= h) {
+          ctx.moveTo(0, oy);
+          ctx.lineTo(w, oy);
+        }
+        ctx.stroke();
+      }
+
+      // 4. 渲染活跃 Chunk 与活细胞 (三级 LOD 自适应)
+      const cellPad = zoom >= 6 ? 1 : 0;
+      const cellSize = Math.max(1.0, zoom - cellPad);
+
+      for (const ch of this.world.chunks.values()) {
+        if (ch.population === 0) continue;
+        // 视锥体剔除 (Frustum Culling)
+        if (ch.cx < minCX || ch.cx > maxCX || ch.cy < minCY || ch.cy > maxCY) continue;
+
+        const baseWX = ch.cx << CHUNK_SHIFT;
+        const baseWY = ch.cy << CHUNK_SHIFT;
+        const chunkSX = (baseWX - this.camX) * zoom + w * 0.5;
+        const chunkSY = (baseWY - this.camY) * zoom + h * 0.5;
+
+        // 可选：高亮活跃 32x32 Chunk 边界框
+        if (this.showChunkBorders && zoom >= 0.3) {
+          ctx.strokeStyle = 'rgba(16, 185, 129, 0.28)';
+          ctx.strokeRect(chunkSX, chunkSY, 32 * zoom, 32 * zoom);
+        }
+
+        // LOD 3: 宏观鸟瞰聚合模式 (zoom < 0.45 px/cell)
+        if (zoom < 0.45) {
+          // 将 32x32 Chunk 划分为 4x4 个 8x8 子块进行热量聚合绘制，防止数十万细胞造成 Canvas 卡顿
+          const subSpan = 8 * zoom;
+          for (let by = 0; by < 4; by++) {
+            for (let bx = 0; bx < 4; bx++) {
+              let hasLive = 0;
+              const rStart = by << 3;
+              const mask = 0xFF << (bx << 3);
+              for (let r = rStart; r < rStart + 8; r++) {
+                if (ch.rows[r] & mask) {
+                  hasLive++;
+                }
+              }
+              if (hasLive > 0) {
+                const alpha = Math.min(1, 0.35 + hasLive * 0.1);
+                ctx.fillStyle = `rgba(0, 242, 254, ${alpha.toFixed(2)})`;
+                ctx.fillRect(chunkSX + bx * subSpan, chunkSY + by * subSpan, Math.max(1.2, subSpan), Math.max(1.2, subSpan));
+              }
+            }
+          }
+          continue;
+        }
+
+        // LOD 1 & 2: 中观与微观精确细胞绘制
+        if (!this.showAgeColors) {
+          ctx.fillStyle = '#00f2fe';
+          for (let ly = 0; ly < 32; ly++) {
+            let rowBits = ch.rows[ly];
+            if (rowBits === 0) continue;
+            const sy = chunkSY + ly * zoom;
+            while (rowBits !== 0) {
+              const lx = 31 - Math.clz32(rowBits & -rowBits);
+              const sx = chunkSX + lx * zoom;
+              ctx.fillRect(sx, sy, cellSize, cellSize);
+              rowBits &= rowBits - 1;
+            }
+          }
+        } else {
+          // 年龄色谱分级绘制
+          const ages = ch.ages;
+          for (let ly = 0; ly < 32; ly++) {
+            let rowBits = ch.rows[ly];
+            if (rowBits === 0) continue;
+            const sy = chunkSY + ly * zoom;
+            const ageRowBase = ly << 5;
+            while (rowBits !== 0) {
+              const lx = 31 - Math.clz32(rowBits & -rowBits);
+              const sx = chunkSX + lx * zoom;
+              const age = ages[ageRowBase | lx];
+              ctx.fillStyle = AGE_PALETTE_CSS[age];
+              ctx.fillRect(sx, sy, cellSize, cellSize);
+              rowBits &= rowBits - 1;
+            }
+          }
+        }
+      }
+
+      // 5. 模式印章放置预览 (Pattern Stamp Ghost Preview) 或 笔刷光标预览
+      if (stampState.active && stampState.pattern) {
+        const pat = stampState.pattern;
+        const anchorX = this.cursorWorldX - (pat.width >> 1);
+        const anchorY = this.cursorWorldY - (pat.height >> 1);
+        const boxSX = (anchorX - this.camX) * zoom + w * 0.5;
+        const boxSY = (anchorY - this.camY) * zoom + h * 0.5;
+        const boxW = pat.width * zoom;
+        const boxH = pat.height * zoom;
+
+        // 半透明翡翠绿预览边界与阴影
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.08)';
+        ctx.fillRect(boxSX, boxSY, boxW, boxH);
+        ctx.strokeStyle = '#10b981';
+        ctx.lineWidth = 1.5;
+        ctx.setLineDash([5, 4]);
+        ctx.strokeRect(boxSX, boxSY, boxW, boxH);
+        ctx.setLineDash([]);
+
+        // 绘制预览幽灵细胞
+        ctx.fillStyle = 'rgba(16, 185, 129, 0.78)';
+        for (let i = 0; i < pat.cells.length; i++) {
+          const [cx, cy] = pat.cells[i];
+          const sx = boxSX + cx * zoom;
+          const sy = boxSY + cy * zoom;
+          ctx.fillRect(sx, sy, cellSize, cellSize);
+        }
+
+        // 顶部尺寸角标文字
+        ctx.fillStyle = '#10b981';
+        ctx.font = 'bold 11px "JetBrains Mono", monospace';
+        ctx.fillText(`${pat.name} [${pat.width}×${pat.height}]`, boxSX + 4, boxSY - 6);
+      } else if (toolState.mode !== 'pan' && zoom >= 4) {
+        // 绘制笔刷悬浮框
+        const bSize = toolState.brushSize === 9 ? 7 : toolState.brushSize;
+        const halfB = bSize >> 1;
+        const bx = (this.cursorWorldX - halfB - this.camX) * zoom + w * 0.5;
+        const by = (this.cursorWorldY - halfB - this.camY) * zoom + h * 0.5;
+        ctx.strokeStyle = toolState.mode === 'erase' ? 'rgba(244, 63, 94, 0.8)' : 'rgba(0, 242, 254, 0.75)';
+        ctx.lineWidth = 1.2;
+        ctx.strokeRect(bx, by, bSize * zoom, bSize * zoom);
+      }
+
+      // 6. 微观坐标悬浮提示 (当放大倍率 >= 18x 时在光标旁显示精确坐标)
+      if (zoom >= 18 && !stampState.active) {
+        const csx = (this.cursorWorldX - this.camX) * zoom + w * 0.5;
+        const csy = (this.cursorWorldY - this.camY) * zoom + h * 0.5;
+        ctx.fillStyle = 'rgba(226, 232, 240, 0.75)';
+        ctx.font = '10px "JetBrains Mono", monospace';
+        ctx.fillText(`(${this.cursorWorldX}, ${this.cursorWorldY})`, csx + zoom + 4, csy + 12);
+      }
+    }
+
+    /**
+     * 渲染右上角宏观全域雷达图 (Minimap Radar)
+     */
+    renderMinimap() {
+      const mctx = this.minimapCtx;
+      const mw = this.minimapCanvas.width;
+      const mh = this.minimapCanvas.height;
+
+      mctx.fillStyle = '#05070b';
+      mctx.fillRect(0, 0, mw, mh);
+
+      // 自动计算雷达覆盖范围
+      let maxCoord = 256;
+      for (const ch of this.world.chunks.values()) {
+        if (ch.population === 0) continue;
+        const ax = Math.abs(ch.cx << 5) + 32;
+        const ay = Math.abs(ch.cy << 5) + 32;
+        if (ax > maxCoord) maxCoord = ax;
+        if (ay > maxCoord) maxCoord = ay;
+      }
+      this.radarSpan = Math.min(8192, Math.max(256, maxCoord * 1.2));
+      const scaleX = (mw * 0.5) / this.radarSpan;
+      const scaleY = (mh * 0.5) / this.radarSpan;
+      const scale = Math.min(scaleX, scaleY);
+
+      const cx0 = mw * 0.5;
+      const cy0 = mh * 0.5;
+
+      // 雷达十字准星
+      mctx.strokeStyle = 'rgba(56, 189, 248, 0.15)';
+      mctx.lineWidth = 1;
+      mctx.beginPath();
+      mctx.moveTo(cx0, 0); mctx.lineTo(cx0, mh);
+      mctx.moveTo(0, cy0); mctx.lineTo(mw, cy0);
+      mctx.stroke();
+
+      // 绘制活跃 Chunk 热力点
+      mctx.fillStyle = '#10b981';
+      for (const ch of this.world.chunks.values()) {
+        if (ch.population === 0) continue;
+        const rx = cx0 + (ch.cx << 5) * scale;
+        const ry = cy0 + (ch.cy << 5) * scale;
+        const rw = Math.max(2, 32 * scale);
+        mctx.fillRect(rx, ry, rw, rw);
+      }
+
+      // 绘制当前相机视口矩形框
+      const vw = (this.width / this.zoom) * scale;
+      const vh = (this.height / this.zoom) * scale;
+      const vx = cx0 + this.camX * scale - vw * 0.5;
+      const vy = cy0 + this.camY * scale - vh * 0.5;
+
+      mctx.strokeStyle = '#00f2fe';
+      mctx.lineWidth = 1.2;
+      mctx.strokeRect(
+        Math.max(1, Math.min(mw - 4, vx)),
+        Math.max(1, Math.min(mh - 4, vy)),
+        Math.max(4, Math.min(mw, vw)),
+        Math.max(4, Math.min(mh, vh))
+      );
+    }
+  }
+
+  // --------------------------------------------------------------------------
+  // 7. 工作站主控制器与解耦仿真调度器 (Workstation Controller)
+  // --------------------------------------------------------------------------
+  const world = new SparseWorld();
+  const historyBuffer = new HistoryRingBuffer(40);
+
+  const viewportCanvas = document.getElementById('viewport');
+  const minimapCanvas = document.getElementById('minimap-canvas');
+  const viewport = new ViewportEngine(viewportCanvas, minimapCanvas, world);
+
+  // 仿真运行状态
+  const simState = {
+    isRunning: false,
+    targetTPS: 60,
+    turboMode: false,
+    accumulator: 0,
+    lastFrameTime: performance.now(),
+    stepCounter: 0,
+    frameCounter: 0,
+    lastTelemetryTime: performance.now(),
+    measuredTPS: 0,
+    measuredFPS: 60,
+    popHistory: new Array(60).fill(0)
+  };
+
+  // 工具与模式印章状态
+  const toolState = {
+    mode: 'draw', // 'draw' | 'pan' | 'erase'
+    brushSize: 1,
+    isPointerDown: false,
+    activeButton: 0,
+    spacePressed: false,
+    lastCellX: null,
+    lastCellY: null,
+    lastScreenX: 0,
+    lastScreenY: 0,
+    editSnapshotSaved: false
+  };
+
+  const stampState = {
+    active: false,
+    pattern: null
+  };
+
+  // UI 引用绑定
+  const ui = {
+    gen: document.getElementById('hud-gen'),
+    pop: document.getElementById('hud-pop'),
+    chunks: document.getElementById('hud-chunks'),
+    tps: document.getElementById('hud-tps'),
+    fps: document.getElementById('hud-fps'),
+    cursor: document.getElementById('hud-cursor'),
+    zoom: document.getElementById('hud-zoom'),
+    sparkCanvas: document.getElementById('sparkline-canvas'),
+    sparkCtx: document.getElementById('sparkline-canvas').getContext('2d'),
+    undoCount: document.getElementById('undo-count'),
+    btnPlay: document.getElementById('btn-play'),
+    btnTurbo: document.getElementById('btn-turbo'),
+    sliderTps: document.getElementById('slider-tps'),
+    valTpsTarget: document.getElementById('val-tps-target'),
+    stampBanner: document.getElementById('stamp-banner'),
+    stampName: document.getElementById('stamp-name'),
+    patternList: document.getElementById('pattern-list-container'),
+    radarRangeLabel: document.getElementById('radar-range-label'),
+    toast: document.getElementById('toast')
+  };
+
+  let toastTimer = null;
+  function showToast(msg) {
+    ui.toast.textContent = msg;
+    ui.toast.classList.add('show');
+    if (toastTimer) clearTimeout(toastTimer);
+    toastTimer = setTimeout(() => ui.toast.classList.remove('show'), 2400);
+  }
+
+  function saveUndoSnapshot() {
+    historyBuffer.push(world.createSnapshot());
+    ui.undoCount.textContent = historyBuffer.size;
+  }
+
+  function performUndo() {
+    if (historyBuffer.size === 0) {
+      showToast('已到达最早历史快照记录');
+      return;
+    }
+    const snap = historyBuffer.pop();
+    world.restoreSnapshot(snap);
+    ui.undoCount.textContent = historyBuffer.size;
+    document.getElementById('input-rule').value = world.ruleString;
+    document.getElementById('rule-active-badge').textContent = world.ruleString;
+    updateTelemetryNumbers();
+    showToast(`已回退至第 ${world.generation} 代`);
+  }
+
+  // --------------------------------------------------------------------------
+  // 8. Bresenham 连续线段插值笔刷与印章锚定
+  // --------------------------------------------------------------------------
+  function applyBrushAtCell(wx, wy, alive) {
+    const size = toolState.brushSize;
+    if (size === 1) {
+      world.setCell(wx, wy, alive);
+    } else if (size === 9) {
+      // 喷枪随机散射笔刷
+      for (let dy = -3; dy <= 3; dy++) {
+        for (let dx = -3; dx <= 3; dx++) {
+          if (dx * dx + dy * dy <= 12 && Math.random() < 0.35) {
+            world.setCell(wx + dx, wy + dy, alive);
+          }
+        }
+      }
+    } else {
+      const half = size >> 1;
+      for (let dy = -half; dy <= half; dy++) {
+        for (let dx = -half; dx <= half; dx++) {
+          world.setCell(wx + dx, wy + dy, alive);
+        }
+      }
+    }
+  }
+
+  function drawLineCells(x0, y0, x1, y1, alive) {
+    let dx = Math.abs(x1 - x0);
+    let dy = Math.abs(y1 - y0);
+    let sx = x0 < x1 ? 1 : -1;
+    let sy = y0 < y1 ? 1 : -1;
+    let err = dx - dy;
+
+    while (true) {
+      applyBrushAtCell(x0, y0, alive);
+      if (x0 === x1 && y0 === y1) break;
+      const e2 = 2 * err;
+      if (e2 > -dy) { err -= dy; x0 += sx; }
+      if (e2 < dx)  { err += dx; y0 += sy; }
+    }
+  }
+
+  function enterStampMode(patternObj) {
+    stampState.active = true;
+    stampState.pattern = patternObj;
+    ui.stampName.textContent = `${patternObj.name} (${patternObj.width}×${patternObj.height})`;
+    ui.stampBanner.classList.add('visible');
+    showToast(`模式 [${patternObj.name}] 已就绪：左键放置，[R] 旋转，[F] 翻转`);
+  }
+
+  function exitStampMode() {
+    stampState.active = false;
+    stampState.pattern = null;
+    ui.stampBanner.classList.remove('visible');
+    document.querySelectorAll('.pattern-card').forEach(el => el.classList.remove('selected'));
+  }
+
+  function stampPatternAt(centerX, centerY, pat) {
+    saveUndoSnapshot();
+    const ox = centerX - (pat.width >> 1);
+    const oy = centerY - (pat.height >> 1);
+    for (let i = 0; i < pat.cells.length; i++) {
+      const [cx, cy] = pat.cells[i];
+      world.setCell(ox + cx, oy + cy, true);
+    }
+    updateTelemetryNumbers();
+  }
+
+  // --------------------------------------------------------------------------
+  // 9. 初始化内置经典模式库列表与开场演示生态
+  // --------------------------------------------------------------------------
+  function buildPatternLibraryUI() {
+    ui.patternList.innerHTML = '';
+    document.getElementById('pattern-count-badge').textContent = CLASSIC_PATTERNS.length;
+
+    CLASSIC_PATTERNS.forEach((item, idx) => {
+      const card = document.createElement('div');
+      card.className = 'pattern-card';
+      card.innerHTML = `
+        <div class="pattern-card-top">
+          <span>${item.name}</span>
+          <span class="pattern-tag">${item.tag}</span>
+        </div>
+        <div class="pattern-desc">${item.desc}</div>
+      `;
+      card.addEventListener('click', () => {
+        document.querySelectorAll('.pattern-card').forEach(el => el.classList.remove('selected'));
+        card.classList.add('selected');
+        const parsed = PatternEngine.parse(item.rle, item.name);
+        enterStampMode(parsed);
+      });
+      ui.patternList.appendChild(card);
+    });
+  }
+
+  function spawnInitialShowcaseEcosystem() {
+    world.clear();
+    historyBuffer.clear();
+
+    // 在原点左上方部署一台 Gosper Glider Gun
+    const gun = PatternEngine.parse(CLASSIC_PATTERNS[0].rle, 'Gosper Gun');
+    for (const [x, y] of gun.cells) {
+      world.setCell(x - 24, y - 12, true);
+    }
+
+    // 在右侧部署一座 Pulsar 周期振荡器
+    const pulsar = PatternEngine.parse(CLASSIC_PATTERNS[5].rle, 'Pulsar');
+    for (const [x, y] of pulsar.cells) {
+      world.setCell(x + 22, y - 6, true);
+    }
+
+    // 在左下方放置一组 Pentadecathlon 周期15振荡器
+    const penta = PatternEngine.parse(CLASSIC_PATTERNS[6].rle, 'Pentadecathlon');
+    for (const [x, y] of penta.cells) {
+      world.setCell(x - 18, y + 14, true);
+    }
+
+    saveUndoSnapshot();
+    updateTelemetryNumbers();
+  }
+
+  // --------------------------------------------------------------------------
+  // 10. 鼠标、滚轮、触控、键盘与拖拽文件交互监听
+  // --------------------------------------------------------------------------
+  viewportCanvas.addEventListener('contextmenu', e => e.preventDefault());
+
+  viewportCanvas.addEventListener('mousedown', e => {
+    viewportCanvas.focus();
+    const { x: wx, y: wy } = viewport.screenToWorld(e.clientX, e.clientY);
+    viewport.cursorWorldX = wx;
+    viewport.cursorWorldY = wy;
+
+    toolState.isPointerDown = true;
+    toolState.activeButton = e.button;
+    toolState.lastScreenX = e.clientX;
+    toolState.lastScreenY = e.clientY;
+    toolState.editSnapshotSaved = false;
+
+    // 鼠标中键 或 按住 Space 键 或 漫游模式 -> 触发无限视口平移
+    if (e.button === 1 || toolState.spacePressed || toolState.mode === 'pan') {
+      viewport.isDraggingPan = true;
+      viewport.velX = 0;
+      viewport.velY = 0;
+      viewportCanvas.style.cursor = 'grabbing';
+      return;
+    }
+
+    // 模式放置预览态
+    if (stampState.active && stampState.pattern) {
+      if (e.button === 0) {
+        stampPatternAt(wx, wy, stampState.pattern);
+        showToast(`已在 (${wx}, ${wy}) 锚定模式`);
+      } else if (e.button === 2) {
+        exitStampMode();
+      }
+      return;
+    }
+
+    // 笔刷绘制与右键擦除
+    const isErase = (e.button === 2) || (toolState.mode === 'erase');
+    saveUndoSnapshot();
+    toolState.editSnapshotSaved = true;
+    applyBrushAtCell(wx, wy, !isErase);
+    toolState.lastCellX = wx;
+    toolState.lastCellY = wy;
+    updateTelemetryNumbers();
+  });
+
+  window.addEventListener('mousemove', e => {
+    viewport.mouseScreenX = e.clientX;
+    viewport.mouseScreenY = e.clientY;
+    const { x: wx, y: wy } = viewport.screenToWorld(e.clientX, e.clientY);
+    viewport.cursorWorldX = wx;
+    viewport.cursorWorldY = wy;
+    ui.cursor.textContent = `${wx}, ${wy}`;
+
+    if (!toolState.isPointerDown) return;
+
+    if (viewport.isDraggingPan) {
+      const dx = e.clientX - toolState.lastScreenX;
+      const dy = e.clientY - toolState.lastScreenY;
+      viewport.camX -= dx / viewport.zoom;
+      viewport.camY -= dy / viewport.zoom;
+      viewport.velX = -dx * 0.85;
+      viewport.velY = -dy * 0.85;
+      toolState.lastScreenX = e.clientX;
+      toolState.lastScreenY = e.clientY;
+      return;
+    }
+
+    if (stampState.active) return;
+
+    const isErase = (toolState.activeButton === 2) || (toolState.mode === 'erase');
+    if (toolState.lastCellX !== null && toolState.lastCellY !== null) {
+      drawLineCells(toolState.lastCellX, toolState.lastCellY, wx, wy, !isErase);
+    } else {
+      applyBrushAtCell(wx, wy, !isErase);
+    }
+    toolState.lastCellX = wx;
+    toolState.lastCellY = wy;
+    updateTelemetryNumbers();
+  });
+
+  window.addEventListener('mouseup', () => {
+    toolState.isPointerDown = false;
+    viewport.isDraggingPan = false;
+    toolState.lastCellX = null;
+    toolState.lastCellY = null;
+    viewportCanvas.style.cursor = (toolState.spacePressed || toolState.mode === 'pan') ? 'grab' : 'crosshair';
+  });
+
+  // 以鼠标指针为中心的无级滚轮缩放
+  viewportCanvas.addEventListener('wheel', e => {
+    e.preventDefault();
+    const zoomFactor = Math.pow(1.0014, -e.deltaY);
+    viewport.zoomAtScreenPoint(zoomFactor, e.clientX, e.clientY);
+    const { x: wx, y: wy } = viewport.screenToWorld(e.clientX, e.clientY);
+    viewport.cursorWorldX = wx;
+    viewport.cursorWorldY = wy;
+    ui.zoom.textContent = `${viewport.zoom < 1 ? viewport.zoom.toFixed(2) : viewport.zoom.toFixed(1)}x`;
+  }, { passive: false });
+
+  // 移动端单指绘制/双指缩放漫游支持
+  let lastTouchDist = 0;
+  viewportCanvas.addEventListener('touchstart', e => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      const { x: wx, y: wy } = viewport.screenToWorld(t.clientX, t.clientY);
+      viewport.cursorWorldX = wx;
+      viewport.cursorWorldY = wy;
+      toolState.lastScreenX = t.clientX;
+      toolState.lastScreenY = t.clientY;
+      if (stampState.active && stampState.pattern) {
+        stampPatternAt(wx, wy, stampState.pattern);
+      } else if (toolState.mode === 'pan') {
+        viewport.isDraggingPan = true;
+      } else {
+        saveUndoSnapshot();
+        applyBrushAtCell(wx, wy, toolState.mode !== 'erase');
+        toolState.lastCellX = wx;
+        toolState.lastCellY = wy;
+      }
+    } else if (e.touches.length === 2) {
+      viewport.isDraggingPan = true;
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      lastTouchDist = Math.hypot(dx, dy);
+    }
+  }, { passive: true });
+
+  viewportCanvas.addEventListener('touchmove', e => {
+    if (e.touches.length === 1) {
+      const t = e.touches[0];
+      if (viewport.isDraggingPan) {
+        const dx = t.clientX - toolState.lastScreenX;
+        const dy = t.clientY - toolState.lastScreenY;
+        viewport.camX -= dx / viewport.zoom;
+        viewport.camY -= dy / viewport.zoom;
+        toolState.lastScreenX = t.clientX;
+        toolState.lastScreenY = t.clientY;
+      } else if (!stampState.active) {
+        const { x: wx, y: wy } = viewport.screenToWorld(t.clientX, t.clientY);
+        drawLineCells(toolState.lastCellX ?? wx, toolState.lastCellY ?? wy, wx, wy, toolState.mode !== 'erase');
+        toolState.lastCellX = wx;
+        toolState.lastCellY = wy;
+      }
+    } else if (e.touches.length === 2) {
+      const dx = e.touches[0].clientX - e.touches[1].clientX;
+      const dy = e.touches[0].clientY - e.touches[1].clientY;
+      const dist = Math.hypot(dx, dy);
+      if (lastTouchDist > 10) {
+        const cx = (e.touches[0].clientX + e.touches[1].clientX) * 0.5;
+        const cy = (e.touches[0].clientY + e.touches[1].clientY) * 0.5;
+        viewport.zoomAtScreenPoint(dist / lastTouchDist, cx, cy);
+      }
+      lastTouchDist = dist;
+    }
+  }, { passive: true });
+
+  viewportCanvas.addEventListener('touchend', () => {
+    viewport.isDraggingPan = false;
+    toolState.lastCellX = null;
+    toolState.lastCellY = null;
+  });
+
+  // 雷达图点击快速定位
+  minimapCanvas.addEventListener('mousedown', e => {
+    const rect = minimapCanvas.getBoundingClientRect();
+    const mx = e.clientX - rect.left;
+    const my = e.clientY - rect.top;
+    const scale = Math.min((rect.width * 0.5) / viewport.radarSpan, (rect.height * 0.5) / viewport.radarSpan);
+    viewport.camX = (mx - rect.width * 0.5) / scale;
+    viewport.camY = (my - rect.height * 0.5) / scale;
+    viewport.velX = 0;
+    viewport.velY = 0;
+  });
+
+  // 全局快捷键系统
+  window.addEventListener('keydown', e => {
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+
+    if (e.code === 'Space') {
+      e.preventDefault();
+      if (!e.repeat) {
+        toolState.spacePressed = true;
+        viewportCanvas.style.cursor = 'grab';
+      }
+    } else if (e.key === 'p' || e.key === 'P') {
+      toggleSimulationPlay();
+    } else if (e.key === 's' || e.key === 'S') {
+      stepGenerations(1);
+    } else if ((e.key === 'z' || e.key === 'Z') && (e.ctrlKey || e.metaKey || !e.shiftKey)) {
+      e.preventDefault();
+      performUndo();
+    } else if (e.key === 'r' || e.key === 'R') {
+      if (stampState.active && stampState.pattern) {
+        stampState.pattern = PatternEngine.rotateCW(stampState.pattern);
+        ui.stampName.textContent = `${stampState.pattern.name} (${stampState.pattern.width}×${stampState.pattern.height})`;
+      }
+    } else if (e.key === 'f' || e.key === 'F') {
+      if (stampState.active && stampState.pattern) {
+        stampState.pattern = PatternEngine.flipHorizontal(stampState.pattern);
+      } else {
+        viewport.fitToActiveWorld();
+      }
+    // MODIFIED: 修正 || 与 && 运算符优先级，防止 Ctrl+V 粘贴时误触发垂直翻转
+    } else if ((e.key === 'v' || e.key === 'V') && !e.ctrlKey && !e.metaKey) {
+      if (stampState.active && stampState.pattern) {
+        stampState.pattern = PatternEngine.flipVertical(stampState.pattern);
+      }
+    } else if (e.key === 'Escape') {
+      if (stampState.active) exitStampMode();
+      document.getElementById('rle-modal').classList.remove('open');
+    } else if (e.key === 'c' || e.key === 'C') {
+      clearWorldAction();
+    } else if (e.key === 'o' || e.key === 'O') {
+      viewport.resetToOrigin();
+    } else if (e.key === 'b' || e.key === 'B') {
+      setToolMode('draw');
+    } else if (e.key === 'h' || e.key === 'H') {
+      setToolMode('pan');
+    } else if (e.key === 'e' || e.key === 'E') {
+      setToolMode('erase');
+    } else if (e.key === 'Tab') {
+      e.preventDefault();
+      document.getElementById('left-sidebar').classList.toggle('collapsed');
+      document.getElementById('right-sidebar').classList.toggle('collapsed');
+    }
+  });
+
+  window.addEventListener('keyup', e => {
+    if (e.code === 'Space') {
+      // 如果按下 Space 期间没有发生拖拽漫游，则切换播放/暂停状态
+      if (!viewport.isDraggingPan && !toolState.isPointerDown) {
+        toggleSimulationPlay();
+      }
+      toolState.spacePressed = false;
+      viewportCanvas.style.cursor = toolState.mode === 'pan' ? 'grab' : 'crosshair';
+    }
+  });
+
+  // 全局剪贴板粘贴 RLE 直接挂载预览 (Ctrl+V)
+  window.addEventListener('paste', e => {
+    const activeTag = document.activeElement ? document.activeElement.tagName : '';
+    if (activeTag === 'INPUT' || activeTag === 'TEXTAREA') return;
+    const text = (e.clipboardData || window.clipboardData).getData('text');
+    if (text && (text.includes('$') || text.includes('!') || text.includes('rule') || text.includes('O'))) {
+      const pat = PatternEngine.parse(text, 'Clipboard Pattern');
+      if (pat.cells.length > 0) {
+        enterStampMode(pat);
+      }
+    }
+  });
+
+  // 拖拽 .rle / .cells 文件进入视口加载
+  const dropOverlay = document.getElementById('drop-overlay');
+  window.addEventListener('dragover', e => {
+    e.preventDefault();
+    dropOverlay.classList.add('active');
+  });
+  window.addEventListener('dragleave', e => {
+    if (e.relatedTarget === null) dropOverlay.classList.remove('active');
+  });
+  window.addEventListener('drop', e => {
+    e.preventDefault();
+    dropOverlay.classList.remove('active');
+    const file = e.dataTransfer.files && e.dataTransfer.files[0];
+    if (!file) return;
+    readPatternFile(file);
+  });
+
+  function readPatternFile(file) {
+    const reader = new FileReader();
+    reader.onload = ev => {
+      const content = ev.target.result;
+      const baseName = file.name.replace(/\.(rle|cells|txt|lif)$/i, '');
+      const pat = PatternEngine.parse(content, baseName);
+      if (pat.cells.length > 0) {
+        document.getElementById('rle-textarea').value = content;
+        document.getElementById('rle-modal').classList.remove('open');
+        enterStampMode(pat);
+      } else {
+        showToast('未能从文件中解析出有效活细胞坐标');
+      }
+    };
+    reader.readAsText(file);
+  }
+
+  // --------------------------------------------------------------------------
+  // 11. 面板控件事件绑定
+  // --------------------------------------------------------------------------
+  function setToolMode(mode) {
+    toolState.mode = mode;
+    document.getElementById('tool-draw').classList.toggle('active', mode === 'draw');
+    document.getElementById('tool-pan').classList.toggle('active', mode === 'pan');
+    document.getElementById('tool-erase').classList.toggle('active', mode === 'erase');
+    viewportCanvas.style.cursor = mode === 'pan' ? 'grab' : 'crosshair';
+    const hints = {
+      draw: '左键绘制 / 右键擦除',
+      pan: '左键拖拽无限视口',
+      erase: '左键连续擦除细胞'
+    };
+    document.getElementById('tool-hint').textContent = hints[mode];
+  }
+
+  document.getElementById('tool-draw').addEventListener('click', () => setToolMode('draw'));
+  document.getElementById('tool-pan').addEventListener('click', () => setToolMode('pan'));
+  document.getElementById('tool-erase').addEventListener('click', () => setToolMode('erase'));
+
+  document.querySelectorAll('.brush-btn').forEach(btn => {
+    btn.addEventListener('click', () => {
+      document.querySelectorAll('.brush-btn').forEach(b => b.classList.remove('active'));
+      btn.classList.add('active');
+      toolState.brushSize = parseInt(btn.dataset.size, 10);
+    });
+  });
+
+  document.getElementById('btn-cancel-stamp').addEventListener('click', exitStampMode);
+
+  // 侧边栏折叠
+  document.getElementById('btn-toggle-left').addEventListener('click', () => {
+    const el = document.getElementById('left-sidebar');
+    el.classList.toggle('collapsed');
+    el.classList.toggle('mobile-open');
+  });
+  document.getElementById('btn-toggle-right').addEventListener('click', () => {
+    const el = document.getElementById('right-sidebar');
+    el.classList.toggle('collapsed');
+    el.classList.toggle('mobile-open');
+  });
+
+  // 传输控制栏
+  function toggleSimulationPlay() {
+    simState.isRunning = !simState.isRunning;
+    if (simState.isRunning) {
+      saveUndoSnapshot();
+      ui.btnPlay.textContent = '⏸ 暂停演化';
+      ui.btnPlay.classList.add('active');
+      simState.accumulator = 0;
+    } else {
+      ui.btnPlay.textContent = '▶ 运行演化';
+      ui.btnPlay.classList.remove('active');
+    }
+  }
+
+  function stepGenerations(count) {
+    if (simState.isRunning) toggleSimulationPlay();
+    saveUndoSnapshot();
+    const t0 = performance.now();
+    for (let i = 0; i < count; i++) {
+      world.step();
+    }
+    const elapsed = performance.now() - t0;
+    simState.stepCounter += count;
+    recordPopulationHistory();
+    updateTelemetryNumbers();
+    if (count > 1) {
+      showToast(`已完成 +${count} 代高速推进 (耗时 ${elapsed.toFixed(1)} ms)`);
+    }
+  }
+
+  ui.btnPlay.addEventListener('click', toggleSimulationPlay);
+  document.getElementById('btn-step-1').addEventListener('click', () => stepGenerations(1));
+  document.getElementById('btn-step-10').addEventListener('click', () => stepGenerations(10));
+  document.getElementById('btn-step-100').addEventListener('click', () => stepGenerations(100));
+  document.getElementById('btn-undo').addEventListener('click', performUndo);
+
+  // 非线性步进速率滑块 (1 .. 1000 TPS)
+  function sliderValueToTPS(v) {
+    if (v <= 60) return v;
+    // 61..100 映射为 65 .. 1200 TPS
+    return Math.round(60 * Math.pow(20, (v - 60) / 40));
+  }
+
+  ui.sliderTps.addEventListener('input', e => {
+    const v = parseInt(e.target.value, 10);
+    simState.targetTPS = sliderValueToTPS(v);
+    ui.valTpsTarget.textContent = `${simState.targetTPS} TPS`;
+  });
+
+  ui.btnTurbo.addEventListener('click', () => {
+    simState.turboMode = !simState.turboMode;
+    ui.btnTurbo.classList.toggle('active', simState.turboMode);
+    ui.valTpsTarget.textContent = simState.turboMode ? 'MAX (1000+ TPS)' : `${simState.targetTPS} TPS`;
+    showToast(simState.turboMode ? '⚡ 已开启极限超频演算模式' : '已恢复标准定频步进模式');
+  });
+
+  // 相机与世界动作
+  document.getElementById('btn-fit-view').addEventListener('click', () => viewport.fitToActiveWorld());
+  document.getElementById('btn-origin-view').addEventListener('click', () => viewport.resetToOrigin());
+
+  function clearWorldAction() {
+    if (simState.isRunning) toggleSimulationPlay();
+    if (world.population > 0) saveUndoSnapshot();
+    world.clear();
+    simState.popHistory.fill(0);
+    updateTelemetryNumbers();
+    showToast('世界网格已清空');
+  }
+  document.getElementById('btn-clear-world').addEventListener('click', clearWorldAction);
+
+  // 随机混沌汤散布器
+  const sliderDensity = document.getElementById('slider-density');
+  const sliderSoupSize = document.getElementById('slider-soup-size');
+  sliderDensity.addEventListener('input', e => {
+    document.getElementById('val-density').textContent = `${e.target.value}%`;
+  });
+  sliderSoupSize.addEventListener('input', e => {
+    document.getElementById('val-soup-size').textContent = `${e.target.value}×${e.target.value}`;
+  });
+
+  document.getElementById('btn-random-soup').addEventListener('click', () => {
+    saveUndoSnapshot();
+    const density = parseInt(sliderDensity.value, 10) / 100;
+    const span = parseInt(sliderSoupSize.value, 10);
+    const half = span >> 1;
+    const cx = Math.round(viewport.camX);
+    const cy = Math.round(viewport.camY);
+
+    for (let y = cy - half; y < cy + half; y++) {
+      for (let x = cx - half; x < cx + half; x++) {
+        if (Math.random() < density) {
+          world.setCell(x, y, true);
+        }
+      }
+    }
+    updateTelemetryNumbers();
+    showToast(`已在视口中心散布 ${span}×${span} 随机混沌汤`);
+  });
+
+  // 规则解析器
+  function applyCustomRule(str) {
+    if (world.setRule(str)) {
+      document.getElementById('input-rule').value = world.ruleString;
+      document.getElementById('rule-active-badge').textContent = world.ruleString;
+      showToast(`已切换自动机规则为 ${world.ruleString}`);
+    } else {
+      showToast('规则格式无效，请使用如 B3/S23 格式');
+    }
+  }
+  document.getElementById('btn-apply-rule').addEventListener('click', () => {
+    applyCustomRule(document.getElementById('input-rule').value);
+  });
+  document.querySelectorAll('.rule-preset').forEach(btn => {
+    btn.addEventListener('click', () => applyCustomRule(btn.dataset.rule));
+  });
+
+  // 渲染开关
+  function bindToggle(id, prop) {
+    const btn = document.getElementById(id);
+    btn.addEventListener('click', () => {
+      viewport[prop] = !viewport[prop];
+      btn.classList.toggle('active', viewport[prop]);
+    });
+  }
+  bindToggle('toggle-grid', 'showGrid');
+  bindToggle('toggle-chunk-border', 'showChunkBorders');
+  bindToggle('toggle-age-color', 'showAgeColors');
+  bindToggle('toggle-origin', 'showOrigin');
+
+  // RLE 终端模态框与 PNG 导出
+  const rleModal = document.getElementById('rle-modal');
+  const rleTextarea = document.getElementById('rle-textarea');
+
+  document.getElementById('btn-rle-modal').addEventListener('click', () => {
+    rleTextarea.value = PatternEngine.serializeWorldToRLE(world);
+    rleModal.classList.add('open');
+  });
+  document.getElementById('btn-close-modal').addEventListener('click', () => {
+    rleModal.classList.remove('open');
+  });
+  document.getElementById('btn-serialize-world').addEventListener('click', () => {
+    rleTextarea.value = PatternEngine.serializeWorldToRLE(world);
+    showToast('已将当前世界所有活细胞编码为标准 RLE');
+  });
+  document.getElementById('btn-copy-rle').addEventListener('click', () => {
+    rleTextarea.select();
+    document.execCommand('copy');
+    showToast('📋 RLE 字符串已复制到系统剪贴板');
+  });
+  document.getElementById('file-input-rle').addEventListener('change', e => {
+    if (e.target.files && e.target.files[0]) {
+      readPatternFile(e.target.files[0]);
+    }
+  });
+  document.getElementById('btn-load-rle-stamp').addEventListener('click', () => {
+    const pat = PatternEngine.parse(rleTextarea.value, 'Imported RLE');
+    if (pat.cells.length === 0) {
+      showToast('RLE 内容为空或无有效细胞');
+      return;
+    }
+    if (pat.rule) applyCustomRule(pat.rule);
+    rleModal.classList.remove('open');
+    enterStampMode(pat);
+  });
+  document.getElementById('btn-load-rle-center').addEventListener('click', () => {
+    const pat = PatternEngine.parse(rleTextarea.value, 'Imported RLE');
+    if (pat.cells.length === 0) {
+      showToast('RLE 内容为空或无有效细胞');
+      return;
+    }
+    saveUndoSnapshot();
+    world.clear();
+    if (pat.rule) applyCustomRule(pat.rule);
+    stampPatternAt(0, 0, pat);
+    viewport.fitToActiveWorld();
+    rleModal.classList.remove('open');
+    showToast(`已在世界中心生成 [${pat.name}]`);
+  });
+
+  // 视口高清 PNG 截图导出
+  document.getElementById('btn-export-png').addEventListener('click', () => {
+    viewport.render(stampState, toolState);
+    const dataUrl = viewportCanvas.toDataURL('image/png');
+    const a = document.createElement('a');
+    a.href = dataUrl;
+    a.download = `life-os-gen-${world.generation}.png`;
+    document.body.appendChild(a);
+    a.click();
+    document.body.removeChild(a);
+    showToast(`📷 已导出第 ${world.generation} 代高清 PNG 快照`);
+  });
+
+  window.addEventListener('resize', () => viewport.resize());
+
+  // --------------------------------------------------------------------------
+  // 12. 遥测监控更新与人口演化趋势图 (Sparkline & Telemetry)
+  // --------------------------------------------------------------------------
+  function recordPopulationHistory() {
+    simState.popHistory.push(world.population);
+    if (simState.popHistory.length > 60) simState.popHistory.shift();
+  }
+
+  function renderSparkline() {
+    const sctx = ui.sparkCtx;
+    const sw = ui.sparkCanvas.width;
+    const sh = ui.sparkCanvas.height;
+    sctx.clearRect(0, 0, sw, sh);
+
+    const arr = simState.popHistory;
+    let minV = Infinity, maxV = -Infinity;
+    for (let i = 0; i < arr.length; i++) {
+      if (arr[i] < minV) minV = arr[i];
+      if (arr[i] > maxV) maxV = arr[i];
+    }
+    if (maxV <= minV) maxV = minV + 1;
+
+    sctx.strokeStyle = '#10b981';
+    sctx.lineWidth = 1.5;
+    sctx.beginPath();
+    for (let i = 0; i < arr.length; i++) {
+      const x = (i / (arr.length - 1)) * sw;
+      const y = sh - 2 - ((arr[i] - minV) / (maxV - minV)) * (sh - 4);
+      if (i === 0) sctx.moveTo(x, y);
+      else sctx.lineTo(x, y);
+    }
+    sctx.stroke();
+  }
+
+  function updateTelemetryNumbers() {
+    ui.gen.textContent = world.generation.toLocaleString();
+    ui.pop.textContent = world.population.toLocaleString();
+    ui.chunks.textContent = world.chunks.size.toLocaleString();
+    ui.zoom.textContent = `${viewport.zoom < 1 ? viewport.zoom.toFixed(2) : viewport.zoom.toFixed(1)}x`;
+    ui.radarRangeLabel.textContent = `±${Math.round(viewport.radarSpan)}`;
+  }
+
+  // --------------------------------------------------------------------------
+  // 13. 解耦主循环 (Decoupled Physics Sub-Stepping + 60FPS Render Loop)
+  // --------------------------------------------------------------------------
+  function mainLoop(now) {
+    const dt = Math.min(100, now - simState.lastFrameTime);
+    simState.lastFrameTime = now;
+
+    // 物理步进计算阶段 (预算时间切片控制，确保即使在超高 TPS 下 UI 响应也稳定在 60 FPS)
+    if (simState.isRunning) {
+      const physicsBudgetMs = 11.5; // 单帧最多分配 11.5ms 给位并行步进内核，留足 5ms 给 Canvas 渲染
+      const tStart = performance.now();
+
+      if (simState.turboMode) {
+        let stepsThisFrame = 0;
+        while ((performance.now() - tStart) < physicsBudgetMs && stepsThisFrame < 120) {
+          world.step();
+          stepsThisFrame++;
+        }
+        simState.stepCounter += stepsThisFrame;
+      } else {
+        const stepInterval = 1000 / simState.targetTPS;
+        simState.accumulator += dt;
+        let stepsThisFrame = 0;
+        while (simState.accumulator >= stepInterval && (performance.now() - tStart) < physicsBudgetMs) {
+          world.step();
+          simState.accumulator -= stepInterval;
+          stepsThisFrame++;
+        }
+        // 若单帧预算耗尽则丢弃多余累积时间防止螺旋卡死 (Spiral of Death)
+        if (simState.accumulator > stepInterval * 4) {
+          simState.accumulator = 0;
+        }
+        simState.stepCounter += stepsThisFrame;
+      }
+
+      if (simState.stepCounter > 0) {
+        recordPopulationHistory();
+      }
+    }
+
+    // 渲染视口与小地图雷达
+    viewport.render(stampState, toolState);
+    viewport.renderMinimap();
+    simState.frameCounter++;
+
+    // 每 250ms 刷新一次 FPS / TPS 频率计与趋势图
+    const elapsedTelemetry = now - simState.lastTelemetryTime;
+    if (elapsedTelemetry >= 250) {
+      simState.measuredTPS = (simState.stepCounter * 1000) / elapsedTelemetry;
+      simState.measuredFPS = Math.min(60, Math.round((simState.frameCounter * 1000) / elapsedTelemetry));
+      simState.stepCounter = 0;
+      simState.frameCounter = 0;
+      simState.lastTelemetryTime = now;
+
+      ui.tps.textContent = simState.measuredTPS >= 100
+        ? Math.round(simState.measuredTPS).toLocaleString()
+        : simState.measuredTPS.toFixed(1);
+      ui.fps.textContent = simState.measuredFPS;
+      updateTelemetryNumbers();
+      renderSparkline();
+    }
+
+    requestAnimationFrame(mainLoop);
+  }
+
+  // 启动工作站
+  buildPatternLibraryUI();
+  spawnInitialShowcaseEcosystem();
+  renderSparkline();
+  requestAnimationFrame(mainLoop);
+})();
+</script>
+</body>
+</html>
