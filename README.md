@@ -1,7 +1,7 @@
 # LIFE//OS — 工业级《康威生命游戏》无限仿真工作站    https://lifeos-pi-drab.vercel.app/
 
 一个**单文件、零依赖、零构建**的浏览器端元胞自动机（Cellular Automata）高性能仿真工作站。
-整个应用（HTML + CSS + JavaScript）压缩在一个自包含的 `index.html` 中，直接双击即可运行，也能一键部署到 Vercel / 任意静态托管。
+整个应用（HTML + CSS + JavaScript）压缩在一个自包含的 `index.html` 中，直接双击即可运行，也能一键部署到 Vercel / 任意静态托管。 https://lifeos-pi-drab.vercel.app/
 
 - **无后端**：所有计算 100% 在浏览器本地完成，不发起任何网络请求，不上传任何数据。
 - **无第三方依赖**：不引入 CDN、不加载任何外部字体/脚本/样式，断网可用。
